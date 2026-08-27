@@ -1,0 +1,28 @@
+# 大数据库（不上传）
+data/polymarket_data.db
+data/*.db
+
+# 旧项目备份
+archives/
+legacy_plotly/
+outputs/
+notebooks/
+reports/
+
+# 旧数据目录
+data/analysis/
+data/elon-tweets_price_history/
+data/prices_history/
+data/worldcup_2026/
+
+# Python 缓存
+__pycache__/
+*.pyc
+*.pyo
+
+# IDE
+.idea/
+.vscode/
+
+# 环境变量
+.env
