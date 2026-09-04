@@ -15,6 +15,7 @@ server = app.server
 from src.dash_app.pages import home
 from src.dash_app.pages import price_tweet_analysis
 from src.dash_app.pages import prediction_backtest
+from src.dash_app.pages import insights_dashboard
 
 app.layout = html.Div([
     dcc.Location(id='url'),
@@ -25,6 +26,7 @@ app.layout = html.Div([
             html.Ul([
                 html.Li(dcc.Link("🏠 首页", href="/"), style={'listStyle': 'none', 'padding': '8px 0'}),
                 html.Li(dcc.Link("📈 价格-推文分析", href="/analysis"), style={'listStyle': 'none', 'padding': '8px 0'}),
+                html.Li(dcc.Link("📊 数据分析中心", href="/insights"), style={'listStyle': 'none', 'padding': '8px 0'}),  # 新增
                 html.Li(dcc.Link("📈 预测回测", href="/backtest"), style={'listStyle': 'none', 'padding': '8px 0', 'fontWeight': 'bold'}),
             ], style={'padding': 0, 'margin': 0})
         ], style={
@@ -67,6 +69,8 @@ def display_page(pathname):
         return price_tweet_analysis.layout()
     elif pathname == '/backtest':
         return prediction_backtest.layout()
+    elif pathname == '/insights':  # 新增路由
+        return insights_dashboard.layout()
     else:
         return home.layout()
 
@@ -75,5 +79,4 @@ from src.dash_app.pages.prediction_backtest import register_params_callbacks
 register_params_callbacks(app)
 
 if __name__ == '__main__':
-    # 尝试 8051 端口
     app.run(debug=False, host='0.0.0.0', port=8050)
