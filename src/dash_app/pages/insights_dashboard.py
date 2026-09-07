@@ -4,6 +4,7 @@
 - 命中市场热力图
 - 推文全量分析
 - 命中区间分布
+- 各区间平均存活时长
 """
 
 import dash
@@ -13,6 +14,7 @@ import plotly.graph_objects as go
 import pandas as pd
 import numpy as np
 
+dash.register_page(__name__, path='/insights', name='📊 数据分析中心')
 
 from src.dash_app.utils.stats_loader import (
     get_overview_stats,
@@ -22,6 +24,9 @@ from src.dash_app.utils.stats_loader import (
     get_correlation_data,
     get_histogram_data,
     get_event_timeline_events,
+    get_ma_values,
+    get_hourly_distribution,
+    get_survival_by_range,
 )
 
 
@@ -34,15 +39,37 @@ def layout():
                    style={'color': '#6c757d', 'fontSize': '14px', 'marginTop': 0}),
         ], style={'marginBottom': 20}),
 
-        # ---- KPI 卡片（5个核心指标） ----
+        # ---- KPI 指标卡（精简为4个） ----
+        html.Div([
+            html.Strong("📊 核心指标含义："),
+            html.Span("总事件 = 所有已结束的 elon-tweets 事件数；总推文 = 覆盖时间内的推文总量；",
+                      style={'marginLeft': '10px'}),
+            html.Span("命中市场 = 最终价格 > 0.99 的子市场数；最热区间 = 历史上命中次数最多的推文区间。",
+                      style={'marginLeft': '5px'}),
+        ], style={'padding': '8px 12px', 'backgroundColor': '#f8f9fa', 'borderRadius': '4px', 'marginBottom': '10px'}),
         html.Div(id='insights-kpi-cards', style={'marginBottom': 20}),
+
+        # ---- 移动平均数值卡 ----
+        html.Div([
+            html.H4("📈 推文移动平均值", style={'marginBottom': 10}),
+            html.Div(id='insights-ma-cards', style={'marginBottom': 15}),
+        ]),
 
         # ---- 主图区：命中市场热力图 ----
         html.Div([
             html.H4("🎯 事件-区间命中热力图", style={'marginBottom': 10}),
             html.P("横轴为事件（按时间排序），纵轴为推文区间，红色表示命中，灰色表示未命中",
                    style={'color': '#6c757d', 'fontSize': '13px', 'marginTop': 0}),
-            dcc.Graph(id='insights-hit-heatmap', style={'height': '500px'})
+            dcc.Graph(id='insights-hit-heatmap', style={'height': '500px'}),
+            html.Div([
+                html.Strong("📖 如何阅读："),
+                html.Span("每一行代表一个推文区间（如 180-199），每一列代表一个历史事件。红色格子表示该区间的最终价格 > 0.99（即“命中”），灰色表示未命中。",
+                          style={'color': '#495057', 'fontSize': '12px'}),
+                html.Br(),
+                html.Strong("💡 统计意义："),
+                html.Span("热力图可以直观看出哪些区间更容易“达成”，以及不同事件之间的一致性。颜色越集中，说明该区间预测稳定性越高。",
+                          style={'color': '#495057', 'fontSize': '12px'})
+            ], style={'padding': '8px 12px', 'backgroundColor': '#f1f3f5', 'borderRadius': '4px', 'marginTop': '8px'})
         ], style={'marginBottom': 30}),
 
         # ---- 推文分析 ----
@@ -63,10 +90,42 @@ def layout():
                 ),
             ], style={'marginBottom': 15}),
             html.Div([
-                dcc.Graph(id='insights-tweet-timeline', style={'height': '350px'})
+                dcc.Graph(id='insights-tweet-timeline', style={'height': '350px'}),
+                html.Div([
+                    html.Strong("📖 如何阅读："),
+                    html.Span("蓝色折线表示每小时实际推文数，虚线为 7 日移动平均线，用于平滑短期波动。",
+                              style={'color': '#495057', 'fontSize': '12px'}),
+                    html.Br(),
+                    html.Strong("💡 统计意义："),
+                    html.Span("趋势向上说明推文热度在上升，向下则反之。移动平均线可以揭示整体趋势方向。",
+                              style={'color': '#495057', 'fontSize': '12px'})
+                ], style={'padding': '8px 12px', 'backgroundColor': '#f1f3f5', 'borderRadius': '4px', 'marginTop': '8px'})
             ], style={'marginBottom': 15}),
             html.Div([
-                dcc.Graph(id='insights-tweet-heatmap', style={'height': '300px'})
+                dcc.Graph(id='insights-tweet-heatmap', style={'height': '300px'}),
+                html.Div([
+                    html.Strong("📖 如何阅读："),
+                    html.Span("横轴为 UTC 时间（0-23 时），纵轴为星期几。颜色越深表示该时段平均推文数越多。",
+                              style={'color': '#495057', 'fontSize': '12px'}),
+                    html.Br(),
+                    html.Strong("💡 统计意义："),
+                    html.Span("可以识别马斯克推文的活跃时段和周期规律，帮助优化策略的时间窗口。",
+                              style={'color': '#495057', 'fontSize': '12px'})
+                ], style={'padding': '8px 12px', 'backgroundColor': '#f1f3f5', 'borderRadius': '4px', 'marginTop': '8px'})
+            ]),
+            # ---- 新增：推文日分布条形图 ----
+            html.Div([
+                html.H5("📊 24小时平均推文分布", style={'marginTop': 20, 'marginBottom': 10}),
+                dcc.Graph(id='insights-hourly-distribution', style={'height': '250px'}),
+                html.Div([
+                    html.Strong("📖 如何阅读："),
+                    html.Span("横轴为 UTC 小时（0-23），纵轴为该小时的平均推文数（所有日期平均）。",
+                              style={'color': '#495057', 'fontSize': '12px'}),
+                    html.Br(),
+                    html.Strong("💡 统计意义："),
+                    html.Span("可以直观看出一天中推文活跃的高峰和低谷时段，辅助确定最佳交易时间窗口。",
+                              style={'color': '#495057', 'fontSize': '12px'})
+                ], style={'padding': '8px 12px', 'backgroundColor': '#f1f3f5', 'borderRadius': '4px', 'marginTop': '8px'})
             ])
         ], style={'marginBottom': 30}),
 
@@ -74,12 +133,47 @@ def layout():
         html.Div([
             html.Div([
                 html.H4("📊 命中区间分布", style={'marginBottom': 10}),
-                dcc.Graph(id='insights-histogram', style={'height': '300px'})
+                dcc.Graph(id='insights-histogram', style={'height': '300px'}),
+                html.Div([
+                    html.Strong("📖 如何阅读："),
+                    html.Span("每个柱子代表一个推文区间，高度表示该区间在历史上被命中的次数。",
+                              style={'color': '#495057', 'fontSize': '12px'}),
+                    html.Br(),
+                    html.Strong("💡 统计意义："),
+                    html.Span("柱子越高说明该区间“达成”的概率越大，可以优先跟踪这些区间。",
+                              style={'color': '#495057', 'fontSize': '12px'})
+                ], style={'padding': '8px 12px', 'backgroundColor': '#f1f3f5', 'borderRadius': '4px', 'marginTop': '8px'})
             ], style={'width': '48%', 'display': 'inline-block', 'verticalAlign': 'top'}),
             html.Div([
                 html.H4("📈 价格 vs 推文相关性", style={'marginBottom': 10}),
-                dcc.Graph(id='insights-correlation', style={'height': '300px'})
+                dcc.Graph(id='insights-correlation', style={'height': '300px'}),
+                html.Div([
+                    html.Strong("📖 如何阅读："),
+                    html.Span("每个点代表一个小时的交易数据，横轴为推文数，纵轴为对应小时的价格。左上角显示皮尔逊相关系数（越接近 1 正相关越强，-1 负相关越强）。",
+                              style={'color': '#495057', 'fontSize': '12px'}),
+                    html.Br(),
+                    html.Strong("💡 统计意义："),
+                    html.Span("如果相关性显著为正，说明推文增多时价格倾向于上涨，可作为策略参考。",
+                              style={'color': '#495057', 'fontSize': '12px'})
+                ], style={'padding': '8px 12px', 'backgroundColor': '#f1f3f5', 'borderRadius': '4px', 'marginTop': '8px'})
             ], style={'width': '48%', 'display': 'inline-block', 'float': 'right', 'verticalAlign': 'top'})
+        ], style={'marginBottom': 20}),
+
+        # ---- 新增：各区间平均存活时长 ----
+        html.Div([
+            html.H4("⏱️ 各区间平均存活时长", style={'marginBottom': 10}),
+            html.P("每个推文区间从事件开始到最终结算的平均时长（小时），柱子上显示该区间的样本数量",
+                   style={'color': '#6c757d', 'fontSize': '13px', 'marginTop': 0}),
+            dcc.Graph(id='insights-survival-chart', style={'height': '300px'}),
+            html.Div([
+                html.Strong("📖 如何阅读："),
+                html.Span("每个区间代表一个推文区间，柱子高度表示该区间内所有市场从事件开始到停止价格更新的平均时长（小时）。柱子上显示该区间的市场数量。",
+                      style={'color': '#495057', 'fontSize': '12px'}),
+            html.Br(),
+            html.Strong("💡 统计意义："),
+            html.Span("存活时长反映了该区间市场活跃期的长短。存活时长长的区间可能价格波动持续较久，适合长线策略；存活时长短的区间可能价格波动短暂，适合短线操作。",
+                      style={'color': '#495057', 'fontSize': '12px'})
+        ], style={'padding': '8px 12px', 'backgroundColor': '#f1f3f5', 'borderRadius': '4px', 'marginTop': '8px'})
         ], style={'marginBottom': 20}),
 
         # ---- 隐藏存储 ----
@@ -91,15 +185,18 @@ def layout():
 
 @callback(
     Output('insights-kpi-cards', 'children'),
+    Output('insights-ma-cards', 'children'),
     Output('insights-hit-heatmap', 'figure'),
     Output('insights-tweet-timeline', 'figure'),
     Output('insights-tweet-heatmap', 'figure'),
     Output('insights-histogram', 'figure'),
     Output('insights-correlation', 'figure'),
+    Output('insights-hourly-distribution', 'figure'),
+    Output('insights-survival-chart', 'figure'),
     Input('insights-time-range', 'value')
 )
 def update_insights(time_range):
-    # ===== 1. KPI 指标卡 =====
+    # ===== 1. KPI 指标卡（精简为4个） =====
     stats = get_overview_stats()
     kpi_cards = html.Div([
         html.Div([
@@ -118,11 +215,6 @@ def update_insights(time_range):
         ], style={'textAlign': 'center', 'padding': '10px', 'backgroundColor': 'white', 'borderRadius': '6px',
                   'boxShadow': '0 1px 3px rgba(0,0,0,0.1)', 'minWidth': '100px'}),
         html.Div([
-            html.Div("📈 命中率", style={'fontSize': '12px', 'color': '#6c757d'}),
-            html.Div(f"{stats['hit_rate']:.1f}%", style={'fontSize': '24px', 'fontWeight': 'bold'})
-        ], style={'textAlign': 'center', 'padding': '10px', 'backgroundColor': 'white', 'borderRadius': '6px',
-                  'boxShadow': '0 1px 3px rgba(0,0,0,0.1)', 'minWidth': '100px'}),
-        html.Div([
             html.Div("🔥 最热区间", style={'fontSize': '12px', 'color': '#6c757d'}),
             html.Div(stats['hot_range'], style={'fontSize': '24px', 'fontWeight': 'bold'})
         ], style={'textAlign': 'center', 'padding': '10px', 'backgroundColor': 'white', 'borderRadius': '6px',
@@ -134,20 +226,48 @@ def update_insights(time_range):
         'justifyContent': 'space-around'
     })
 
-    # ===== 2. 命中热力图 =====
+    # ===== 2. 移动平均数值卡 =====
+    ma = get_ma_values()
+    ma_cards = html.Div([
+        html.Div([
+            html.Div("24小时平均", style={'fontSize': '12px', 'color': '#6c757d'}),
+            html.Div(f"{ma['ma_24h']:.1f}", style={'fontSize': '20px', 'fontWeight': 'bold', 'color': '#3498db'})
+        ], style={'textAlign': 'center', 'padding': '8px 12px', 'backgroundColor': 'white', 'borderRadius': '6px',
+                  'boxShadow': '0 1px 3px rgba(0,0,0,0.1)', 'minWidth': '80px'}),
+        html.Div([
+            html.Div("7天平均", style={'fontSize': '12px', 'color': '#6c757d'}),
+            html.Div(f"{ma['ma_7d']:.1f}", style={'fontSize': '20px', 'fontWeight': 'bold', 'color': '#2ecc71'})
+        ], style={'textAlign': 'center', 'padding': '8px 12px', 'backgroundColor': 'white', 'borderRadius': '6px',
+                  'boxShadow': '0 1px 3px rgba(0,0,0,0.1)', 'minWidth': '80px'}),
+        html.Div([
+            html.Div("14天平均", style={'fontSize': '12px', 'color': '#6c757d'}),
+            html.Div(f"{ma['ma_14d']:.1f}", style={'fontSize': '20px', 'fontWeight': 'bold', 'color': '#e67e22'})
+        ], style={'textAlign': 'center', 'padding': '8px 12px', 'backgroundColor': 'white', 'borderRadius': '6px',
+                  'boxShadow': '0 1px 3px rgba(0,0,0,0.1)', 'minWidth': '80px'}),
+    ], style={
+        'display': 'flex',
+        'flexWrap': 'wrap',
+        'gap': '15px',
+        'justifyContent': 'space-around'
+    })
+
+    # ===== 3. 命中热力图 =====
     hit_df = get_hit_distribution()
     if not hit_df.empty:
-        events_unique = hit_df['event_slug'].unique()
+        events_unique = hit_df['event_short'].unique()
         if len(events_unique) > 30:
             events_to_keep = events_unique[-30:]
-            hit_df = hit_df[hit_df['event_slug'].isin(events_to_keep)]
+            hit_df = hit_df[hit_df['event_short'].isin(events_to_keep)]
 
+        range_order = hit_df[['range_label', 'range_start']].drop_duplicates().sort_values('range_start')['range_label'].tolist()
         hit_pivot = hit_df.pivot_table(
             index='range_label',
-            columns='event_slug',
+            columns='event_short',
             values='is_hit',
-            fill_value=0
+            fill_value=0,
+            aggfunc='max'
         )
+        hit_pivot = hit_pivot.reindex(range_order)
 
         heatmap_fig = go.Figure(data=go.Heatmap(
             z=hit_pivot.values,
@@ -161,7 +281,7 @@ def update_insights(time_range):
         ))
         heatmap_fig.update_layout(
             xaxis={'tickangle': -45, 'tickfont': {'size': 10}},
-            yaxis={'title': '推文区间'},
+            yaxis={'title': '推文区间', 'autorange': 'reversed'},
             margin={'l': 100, 'r': 20, 't': 20, 'b': 120},
             height=450
         )
@@ -169,7 +289,7 @@ def update_insights(time_range):
         heatmap_fig = go.Figure()
         heatmap_fig.add_annotation(text="暂无数据", showarrow=False)
 
-    # ===== 3. 推文时间序列 =====
+    # ===== 4. 推文时间序列 =====
     tweet_df = get_tweet_timeline(30 if time_range == 'all' else time_range)
     if not tweet_df.empty:
         tweet_fig = go.Figure()
@@ -200,7 +320,7 @@ def update_insights(time_range):
         tweet_fig = go.Figure()
         tweet_fig.add_annotation(text="暂无数据", showarrow=False)
 
-    # ===== 4. 推文热力图 =====
+    # ===== 5. 推文热力图 =====
     heatmap_df = get_tweet_heatmap()
     if not heatmap_df.empty:
         heatmap_pivot = heatmap_df.pivot_table(
@@ -225,7 +345,7 @@ def update_insights(time_range):
         heatmap2_fig = go.Figure()
         heatmap2_fig.add_annotation(text="暂无数据", showarrow=False)
 
-    # ===== 5. 命中区间直方图 =====
+    # ===== 6. 命中区间直方图 =====
     hist_df = get_histogram_data()
     if not hist_df.empty:
         hist_fig = px.bar(
@@ -246,7 +366,7 @@ def update_insights(time_range):
         hist_fig = go.Figure()
         hist_fig.add_annotation(text="暂无数据", showarrow=False)
 
-    # ===== 6. 相关性散点图 =====
+    # ===== 7. 相关性散点图 =====
     corr_df = get_correlation_data()
     if not corr_df.empty:
         correlation = corr_df['price_last'].corr(corr_df['tweet_count'])
@@ -266,4 +386,46 @@ def update_insights(time_range):
         corr_fig = go.Figure()
         corr_fig.add_annotation(text="暂无数据", showarrow=False)
 
-    return kpi_cards, heatmap_fig, tweet_fig, heatmap2_fig, hist_fig, corr_fig
+    # ===== 8. 推文日分布条形图 =====
+    hourly_df = get_hourly_distribution()
+    if not hourly_df.empty:
+        hour_fig = px.bar(
+            hourly_df,
+            x='hour',
+            y='avg_tweets',
+            title='24小时平均推文数',
+            labels={'hour': 'UTC 小时', 'avg_tweets': '平均推文数'},
+            color='avg_tweets',
+            color_continuous_scale='Blues'
+        )
+        hour_fig.update_layout(
+            xaxis={'tickmode': 'linear', 'dtick': 2},
+            showlegend=False,
+            margin={'l': 40, 'r': 20, 't': 40, 'b': 40}
+        )
+    else:
+        hour_fig = go.Figure()
+        hour_fig.add_annotation(text="暂无数据", showarrow=False)
+
+    # ===== 9. 各区间平均存活时长 =====
+    survival_df = get_survival_by_range()
+    if not survival_df.empty:
+        survival_fig = go.Figure()
+        survival_fig.add_trace(go.Bar(
+            x=survival_df['range_label'],
+            y=survival_df['avg_survival_hours'],
+            text=survival_df['sample_count'].astype(str),
+            textposition='outside',
+            marker_color='#3498db',
+            hovertemplate='区间: %{x}<br>平均存活: %{y:.1f}h<br>样本量: %{text}<extra></extra>'
+        ))
+        survival_fig.update_layout(
+            xaxis={'title': '推文区间', 'tickangle': -45},
+            yaxis={'title': '平均存活时长 (小时)'},
+            margin={'l': 50, 'r': 20, 't': 20, 'b': 80}
+        )
+    else:
+        survival_fig = go.Figure()
+        survival_fig.add_annotation(text="暂无数据", showarrow=False)
+
+    return kpi_cards, ma_cards, heatmap_fig, tweet_fig, heatmap2_fig, hist_fig, corr_fig, hour_fig, survival_fig
