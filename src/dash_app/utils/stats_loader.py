@@ -5,13 +5,12 @@
 
 import pandas as pd
 import numpy as np
-from datetime import datetime
+from datetime import datetime, timedelta
 from .data_loader import run_query
 
 
 def get_overview_stats() -> dict:
     """获取核心 KPI 指标（精简版）"""
-    # 总事件
     events = run_query("""
         SELECT COUNT(*) as total_events
         FROM events
@@ -19,14 +18,12 @@ def get_overview_stats() -> dict:
     """)
     total_events = events['total_events'].iloc[0] if not events.empty else 0
 
-    # 总推文
     tweets = run_query("""
         SELECT SUM(tweet_count) as total_tweets
         FROM tweet_hourly
     """)
     total_tweets = tweets['total_tweets'].iloc[0] if not tweets.empty else 0
 
-    # 命中市场
     hit_markets = run_query("""
         SELECT COUNT(DISTINCT market_id) as hit_count
         FROM price_hourly
@@ -34,7 +31,6 @@ def get_overview_stats() -> dict:
     """)
     hit_count = hit_markets['hit_count'].iloc[0] if not hit_markets.empty else 0
 
-    # 最热区间
     hot_range = run_query("""
         SELECT m.range_start, m.range_end, COUNT(*) as hit_count
         FROM price_hourly p
@@ -86,13 +82,11 @@ def get_hit_distribution() -> pd.DataFrame:
     if df.empty:
         return pd.DataFrame()
 
-    # 构建区间标签
     df['range_label'] = df.apply(
         lambda row: f"{int(row['range_start'])}-{int(row['range_end']) if not pd.isna(row['range_end']) else '∞'}",
         axis=1
     )
 
-    # 生成简化事件标签：MMDD-MMDD-YYYY
     def make_short_label(start_date, end_date):
         try:
             start_dt = pd.to_datetime(start_date, format='mixed', utc=True)
@@ -106,7 +100,6 @@ def get_hit_distribution() -> pd.DataFrame:
         axis=1
     )
 
-    # 按 range_start 排序（保证纵坐标顺序）
     df = df.sort_values('range_start').reset_index(drop=True)
     df['start_date'] = pd.to_datetime(df['start_date'], format='mixed', utc=True)
     return df
@@ -150,7 +143,7 @@ def get_tweet_heatmap() -> pd.DataFrame:
 
 
 def get_correlation_data() -> pd.DataFrame:
-    """获取价格与推文的相关性数据（按小时关联）"""
+    """获取价格与推文的相关性数据"""
     query = """
         SELECT 
             p.price_last,
@@ -193,7 +186,7 @@ def get_histogram_data() -> pd.DataFrame:
 
 
 def get_event_timeline_events() -> pd.DataFrame:
-    """获取所有事件的时间线数据（用于联动）"""
+    """获取所有事件的时间线数据"""
     query = """
         SELECT 
             id,
@@ -207,25 +200,21 @@ def get_event_timeline_events() -> pd.DataFrame:
     return run_query(query)
 
 
-# ===== 新增：移动平均 =====
 def get_ma_values() -> dict:
     """获取 24小时、7天、14天的推文平均值"""
     now_ts = int(datetime.now().timestamp())
     day_seconds = 86400
 
-    # 24小时
     query_24h = f"""
         SELECT AVG(tweet_count) as avg_24h
         FROM tweet_hourly
         WHERE timestamp_unix_utc >= {now_ts - day_seconds}
     """
-    # 7天
     query_7d = f"""
         SELECT AVG(tweet_count) as avg_7d
         FROM tweet_hourly
         WHERE timestamp_unix_utc >= {now_ts - 7 * day_seconds}
     """
-    # 14天
     query_14d = f"""
         SELECT AVG(tweet_count) as avg_14d
         FROM tweet_hourly
@@ -260,12 +249,8 @@ def get_hourly_distribution() -> pd.DataFrame:
     return df
 
 
-# ===== 新增：各区间平均存活时长 =====
 def get_survival_by_range() -> pd.DataFrame:
-    """
-    获取各子市场的平均存活时长
-    定义：从事件 game_start_time 到该市场最后一条价格记录的时间（小时）
-    """
+    """获取各子市场的平均存活时长"""
     query = """
         SELECT 
             m.range_start,
@@ -293,3 +278,50 @@ def get_survival_by_range() -> pd.DataFrame:
         axis=1
     )
     return df
+
+
+# ===== 新增：推文探索器 =====
+
+def get_tweet_matrix(start_date: str = None, end_date: str = None) -> pd.DataFrame:
+    """获取日期 × 小时的推文矩阵"""
+    conditions = []
+    params = []
+
+    if start_date:
+        start_ts = int(pd.to_datetime(start_date).timestamp())
+        conditions.append("timestamp_unix_utc >= ?")
+        params.append(start_ts)
+    if end_date:
+        end_ts = int(pd.to_datetime(end_date).timestamp())
+        conditions.append("timestamp_unix_utc <= ?")
+        params.append(end_ts)
+
+    query = """
+        SELECT 
+            DATE(timestamp_unix_utc, 'unixepoch') as date,
+            strftime('%H', timestamp_unix_utc, 'unixepoch') as hour,
+            tweet_count
+        FROM tweet_hourly
+    """
+    if conditions:
+        query += " WHERE " + " AND ".join(conditions)
+
+    df = run_query(query, tuple(params))
+    if df.empty:
+        return pd.DataFrame()
+    return df
+
+
+def get_event_time_range(event_id: str) -> tuple:
+    """获取事件的时间范围"""
+    query = """
+        SELECT 
+            start_date as start_time,
+            end_date as end_time
+        FROM events
+        WHERE id = ?
+    """
+    df = run_query(query, (event_id,))
+    if df.empty:
+        return (None, None)
+    return (df['start_time'].iloc[0], df['end_time'].iloc[0])

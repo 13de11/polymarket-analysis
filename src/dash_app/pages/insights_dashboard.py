@@ -5,6 +5,7 @@
 - 推文全量分析
 - 命中区间分布
 - 各区间平均存活时长
+- 推文探索器（优化版）
 """
 
 import dash
@@ -13,8 +14,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import pandas as pd
 import numpy as np
-
-dash.register_page(__name__, path='/insights', name='📊 数据分析中心')
+from datetime import datetime, timedelta
 
 from src.dash_app.utils.stats_loader import (
     get_overview_stats,
@@ -27,6 +27,8 @@ from src.dash_app.utils.stats_loader import (
     get_ma_values,
     get_hourly_distribution,
     get_survival_by_range,
+    get_tweet_matrix,
+    get_event_time_range,
 )
 
 
@@ -39,7 +41,7 @@ def layout():
                    style={'color': '#6c757d', 'fontSize': '14px', 'marginTop': 0}),
         ], style={'marginBottom': 20}),
 
-        # ---- KPI 指标卡（精简为4个） ----
+        # ---- KPI 指标卡 ----
         html.Div([
             html.Strong("📊 核心指标含义："),
             html.Span("总事件 = 所有已结束的 elon-tweets 事件数；总推文 = 覆盖时间内的推文总量；",
@@ -113,7 +115,6 @@ def layout():
                               style={'color': '#495057', 'fontSize': '12px'})
                 ], style={'padding': '8px 12px', 'backgroundColor': '#f1f3f5', 'borderRadius': '4px', 'marginTop': '8px'})
             ]),
-            # ---- 新增：推文日分布条形图 ----
             html.Div([
                 html.H5("📊 24小时平均推文分布", style={'marginTop': 20, 'marginBottom': 10}),
                 dcc.Graph(id='insights-hourly-distribution', style={'height': '250px'}),
@@ -159,7 +160,7 @@ def layout():
             ], style={'width': '48%', 'display': 'inline-block', 'float': 'right', 'verticalAlign': 'top'})
         ], style={'marginBottom': 20}),
 
-        # ---- 新增：各区间平均存活时长 ----
+        # ---- 各区间平均存活时长 ----
         html.Div([
             html.H4("⏱️ 各区间平均存活时长", style={'marginBottom': 10}),
             html.P("每个推文区间从事件开始到最终结算的平均时长（小时），柱子上显示该区间的样本数量",
@@ -168,20 +169,102 @@ def layout():
             html.Div([
                 html.Strong("📖 如何阅读："),
                 html.Span("每个区间代表一个推文区间，柱子高度表示该区间内所有市场从事件开始到停止价格更新的平均时长（小时）。柱子上显示该区间的市场数量。",
-                      style={'color': '#495057', 'fontSize': '12px'}),
-            html.Br(),
-            html.Strong("💡 统计意义："),
-            html.Span("存活时长反映了该区间市场活跃期的长短。存活时长长的区间可能价格波动持续较久，适合长线策略；存活时长短的区间可能价格波动短暂，适合短线操作。",
-                      style={'color': '#495057', 'fontSize': '12px'})
-        ], style={'padding': '8px 12px', 'backgroundColor': '#f1f3f5', 'borderRadius': '4px', 'marginTop': '8px'})
+                          style={'color': '#495057', 'fontSize': '12px'}),
+                html.Br(),
+                html.Strong("💡 统计意义："),
+                html.Span("存活时长反映了该区间市场活跃期的长短。存活时长长的区间可能价格波动持续较久，适合长线策略；存活时长短的区间可能价格波动短暂，适合短线操作。",
+                          style={'color': '#495057', 'fontSize': '12px'})
+            ], style={'padding': '8px 12px', 'backgroundColor': '#f1f3f5', 'borderRadius': '4px', 'marginTop': '8px'})
         ], style={'marginBottom': 20}),
 
-        # ---- 隐藏存储 ----
+        # ---- 推文探索器 ----
+        html.Div([
+            html.H4("🔍 推文探索器", style={'marginBottom': 10}),
+            html.P("按时间范围或事件筛选，查看推文数量的日期-小时分布",
+                   style={'color': '#6c757d', 'fontSize': '13px', 'marginTop': 0}),
+
+            # 筛选器
+            html.Div([
+                html.Div([
+                    html.Label("筛选模式:", style={'fontWeight': 'bold', 'marginRight': '10px'}),
+                    dcc.Dropdown(
+                        id='tweet-explorer-mode',
+                        options=[
+                            {'label': '近7天', 'value': '7d'},
+                            {'label': '近30天', 'value': '30d'},
+                            {'label': '近90天', 'value': '90d'},
+                            {'label': '事件', 'value': 'event'},
+                            {'label': '自定义', 'value': 'custom'},
+                        ],
+                        value='7d',
+                        style={'width': '150px', 'display': 'inline-block'}
+                    ),
+                ], style={'display': 'inline-block', 'marginRight': '15px'}),
+
+                # 事件选择（仅在 mode='event' 时显示）
+                html.Div([
+                    html.Label("事件:", style={'fontWeight': 'bold', 'marginRight': '10px'}),
+                    dcc.Dropdown(
+                        id='tweet-explorer-event',
+                        options=[],
+                        placeholder='选择事件',
+                        style={'width': '250px', 'display': 'inline-block'}
+                    ),
+                ], id='tweet-explorer-event-container', style={'display': 'none'}),
+
+                # 自定义日期范围（仅在 mode='custom' 时显示）
+                html.Div([
+                    html.Label("开始日期:", style={'fontWeight': 'bold', 'marginRight': '10px'}),
+                    dcc.Input(
+                        id='tweet-explorer-start-date',
+                        type='date',
+                        style={'width': '140px', 'display': 'inline-block', 'marginRight': '15px'}
+                    ),
+                    html.Label("结束日期:", style={'fontWeight': 'bold', 'marginRight': '10px'}),
+                    dcc.Input(
+                        id='tweet-explorer-end-date',
+                        type='date',
+                        style={'width': '140px', 'display': 'inline-block'}
+                    ),
+                ], id='tweet-explorer-date-container', style={'display': 'none'}),
+            ], style={
+                'padding': '12px 15px',
+                'backgroundColor': '#f8f9fa',
+                'borderRadius': '6px',
+                'marginBottom': '15px',
+                'display': 'flex',
+                'flexWrap': 'wrap',
+                'gap': '10px',
+                'alignItems': 'center'
+            }),
+
+            # 统计摘要卡
+            html.Div(id='tweet-explorer-stats', style={'marginBottom': '15px'}),
+
+            # 热力图
+            html.Div([
+                dcc.Graph(
+                    id='tweet-explorer-heatmap',
+                    style={'height': '450px', 'width': '100%'},
+                    config={'displayModeBar': True, 'scrollZoom': True}
+                ),
+                html.Div([
+                    html.Strong("📖 如何阅读："),
+                    html.Span("热力图展示每个日期-小时组合的推文数量，颜色越深表示推文越多。拖动底部的滑块可以查看不同时间段。",
+                              style={'color': '#495057', 'fontSize': '12px'}),
+                    html.Br(),
+                    html.Strong("💡 统计意义："),
+                    html.Span("可以快速识别推文爆发日和高频时段，帮助判断市场关注度的变化。",
+                              style={'color': '#495057', 'fontSize': '12px'})
+                ], style={'padding': '8px 12px', 'backgroundColor': '#f1f3f5', 'borderRadius': '4px', 'marginTop': '8px'})
+            ], style={'overflowX': 'auto'}),
+        ], style={'marginBottom': 20}),
+
         dcc.Store(id='insights-store', data={}),
     ], style={'padding': '0 20px'})
 
 
-# ========== 回调 ==========
+# ========== 主回调 ==========
 
 @callback(
     Output('insights-kpi-cards', 'children'),
@@ -196,7 +279,6 @@ def layout():
     Input('insights-time-range', 'value')
 )
 def update_insights(time_range):
-    # ===== 1. KPI 指标卡（精简为4个） =====
     stats = get_overview_stats()
     kpi_cards = html.Div([
         html.Div([
@@ -220,13 +302,9 @@ def update_insights(time_range):
         ], style={'textAlign': 'center', 'padding': '10px', 'backgroundColor': 'white', 'borderRadius': '6px',
                   'boxShadow': '0 1px 3px rgba(0,0,0,0.1)', 'minWidth': '100px'}),
     ], style={
-        'display': 'flex',
-        'flexWrap': 'wrap',
-        'gap': '15px',
-        'justifyContent': 'space-around'
+        'display': 'flex', 'flexWrap': 'wrap', 'gap': '15px', 'justifyContent': 'space-around'
     })
 
-    # ===== 2. 移动平均数值卡 =====
     ma = get_ma_values()
     ma_cards = html.Div([
         html.Div([
@@ -244,188 +322,252 @@ def update_insights(time_range):
             html.Div(f"{ma['ma_14d']:.1f}", style={'fontSize': '20px', 'fontWeight': 'bold', 'color': '#e67e22'})
         ], style={'textAlign': 'center', 'padding': '8px 12px', 'backgroundColor': 'white', 'borderRadius': '6px',
                   'boxShadow': '0 1px 3px rgba(0,0,0,0.1)', 'minWidth': '80px'}),
-    ], style={
-        'display': 'flex',
-        'flexWrap': 'wrap',
-        'gap': '15px',
-        'justifyContent': 'space-around'
-    })
+    ], style={'display': 'flex', 'flexWrap': 'wrap', 'gap': '15px', 'justifyContent': 'space-around'})
 
-    # ===== 3. 命中热力图 =====
     hit_df = get_hit_distribution()
     if not hit_df.empty:
         events_unique = hit_df['event_short'].unique()
         if len(events_unique) > 30:
-            events_to_keep = events_unique[-30:]
-            hit_df = hit_df[hit_df['event_short'].isin(events_to_keep)]
-
+            hit_df = hit_df[hit_df['event_short'].isin(events_unique[-30:])]
         range_order = hit_df[['range_label', 'range_start']].drop_duplicates().sort_values('range_start')['range_label'].tolist()
-        hit_pivot = hit_df.pivot_table(
-            index='range_label',
-            columns='event_short',
-            values='is_hit',
-            fill_value=0,
-            aggfunc='max'
-        )
+        hit_pivot = hit_df.pivot_table(index='range_label', columns='event_short', values='is_hit', fill_value=0, aggfunc='max')
         hit_pivot = hit_pivot.reindex(range_order)
-
         heatmap_fig = go.Figure(data=go.Heatmap(
-            z=hit_pivot.values,
-            x=hit_pivot.columns,
-            y=hit_pivot.index,
-            colorscale=[[0, '#e8e8e8'], [1, '#d62728']],
-            zmin=0,
-            zmax=1,
-            showscale=False,
+            z=hit_pivot.values, x=hit_pivot.columns, y=hit_pivot.index,
+            colorscale=[[0, '#e8e8e8'], [1, '#d62728']], zmin=0, zmax=1, showscale=False,
             hovertemplate='事件: %{x}<br>区间: %{y}<br>命中: %{z}<extra></extra>'
         ))
         heatmap_fig.update_layout(
             xaxis={'tickangle': -45, 'tickfont': {'size': 10}},
             yaxis={'title': '推文区间', 'autorange': 'reversed'},
-            margin={'l': 100, 'r': 20, 't': 20, 'b': 120},
-            height=450
+            margin={'l': 100, 'r': 20, 't': 20, 'b': 120}, height=450
         )
     else:
-        heatmap_fig = go.Figure()
-        heatmap_fig.add_annotation(text="暂无数据", showarrow=False)
+        heatmap_fig = go.Figure().add_annotation(text="暂无数据", showarrow=False)
 
-    # ===== 4. 推文时间序列 =====
     tweet_df = get_tweet_timeline(30 if time_range == 'all' else time_range)
     if not tweet_df.empty:
         tweet_fig = go.Figure()
-        tweet_fig.add_trace(go.Scatter(
-            x=tweet_df['hour_utc'],
-            y=tweet_df['tweet_count'],
-            mode='lines',
-            name='推文数',
-            line=dict(color='#ff6b35', width=1.5),
-            fill='tozeroy',
-            fillcolor='rgba(255, 107, 53, 0.1)'
-        ))
+        tweet_fig.add_trace(go.Scatter(x=tweet_df['hour_utc'], y=tweet_df['tweet_count'], mode='lines', name='推文数',
+                                       line=dict(color='#ff6b35', width=1.5), fill='tozeroy', fillcolor='rgba(255,107,53,0.1)'))
         tweet_df['sma_7'] = tweet_df['tweet_count'].rolling(7).mean()
-        tweet_fig.add_trace(go.Scatter(
-            x=tweet_df['hour_utc'],
-            y=tweet_df['sma_7'],
-            mode='lines',
-            name='7日移动平均',
-            line=dict(color='#2c3e50', width=2, dash='dash')
-        ))
-        tweet_fig.update_layout(
-            xaxis={'title': '时间'},
-            yaxis={'title': '推文数'},
-            hovermode='x unified',
-            margin={'l': 40, 'r': 20, 't': 20, 'b': 40}
-        )
+        tweet_fig.add_trace(go.Scatter(x=tweet_df['hour_utc'], y=tweet_df['sma_7'], mode='lines', name='7日移动平均',
+                                       line=dict(color='#2c3e50', width=2, dash='dash')))
+        tweet_fig.update_layout(xaxis={'title': '时间'}, yaxis={'title': '推文数'}, hovermode='x unified',
+                                margin={'l': 40, 'r': 20, 't': 20, 'b': 40})
     else:
-        tweet_fig = go.Figure()
-        tweet_fig.add_annotation(text="暂无数据", showarrow=False)
+        tweet_fig = go.Figure().add_annotation(text="暂无数据", showarrow=False)
 
-    # ===== 5. 推文热力图 =====
     heatmap_df = get_tweet_heatmap()
     if not heatmap_df.empty:
-        heatmap_pivot = heatmap_df.pivot_table(
-            index='dow_label',
-            columns='hour',
-            values='avg_tweets',
-            fill_value=0
-        )
+        heatmap_pivot = heatmap_df.pivot_table(index='dow_label', columns='hour', values='avg_tweets', fill_value=0)
         heatmap2_fig = go.Figure(data=go.Heatmap(
-            z=heatmap_pivot.values,
-            x=heatmap_pivot.columns,
-            y=heatmap_pivot.index,
-            colorscale='Reds',
+            z=heatmap_pivot.values, x=heatmap_pivot.columns, y=heatmap_pivot.index, colorscale='Reds',
             hovertemplate='星期: %{y}<br>小时: %{x}<br>平均推文: %{z:.1f}<extra></extra>'
         ))
-        heatmap2_fig.update_layout(
-            xaxis={'title': '小时 (UTC)', 'tickmode': 'array', 'tickvals': list(range(0, 24, 3))},
-            yaxis={'title': '星期'},
-            margin={'l': 80, 'r': 20, 't': 20, 'b': 40}
-        )
+        heatmap2_fig.update_layout(xaxis={'title': '小时 (UTC)', 'tickmode': 'array', 'tickvals': list(range(0, 24, 3))},
+                                   yaxis={'title': '星期'}, margin={'l': 80, 'r': 20, 't': 20, 'b': 40})
     else:
-        heatmap2_fig = go.Figure()
-        heatmap2_fig.add_annotation(text="暂无数据", showarrow=False)
+        heatmap2_fig = go.Figure().add_annotation(text="暂无数据", showarrow=False)
 
-    # ===== 6. 命中区间直方图 =====
     hist_df = get_histogram_data()
     if not hist_df.empty:
-        hist_fig = px.bar(
-            hist_df.sort_values('range_start'),
-            x='range_label',
-            y='hit_count',
-            title='各区间命中次数',
-            labels={'x': '推文区间', 'y': '命中次数'},
-            color='hit_count',
-            color_continuous_scale='Reds'
-        )
-        hist_fig.update_layout(
-            xaxis={'tickangle': -45},
-            showlegend=False,
-            margin={'l': 40, 'r': 20, 't': 40, 'b': 80}
-        )
+        hist_fig = px.bar(hist_df.sort_values('range_start'), x='range_label', y='hit_count',
+                          title='各区间命中次数', labels={'x': '推文区间', 'y': '命中次数'}, color='hit_count',
+                          color_continuous_scale='Reds')
+        hist_fig.update_layout(xaxis={'tickangle': -45}, showlegend=False, margin={'l': 40, 'r': 20, 't': 40, 'b': 80})
     else:
-        hist_fig = go.Figure()
-        hist_fig.add_annotation(text="暂无数据", showarrow=False)
+        hist_fig = go.Figure().add_annotation(text="暂无数据", showarrow=False)
 
-    # ===== 7. 相关性散点图 =====
     corr_df = get_correlation_data()
     if not corr_df.empty:
         correlation = corr_df['price_last'].corr(corr_df['tweet_count'])
-        corr_fig = px.scatter(
-            corr_df,
-            x='tweet_count',
-            y='price_last',
-            title=f'价格 vs 推文 (相关系数: {correlation:.3f})',
-            labels={'tweet_count': '推文数', 'price_last': '价格'},
-            opacity=0.5,
-            color_discrete_sequence=['#3498db']
-        )
-        corr_fig.update_layout(
-            margin={'l': 40, 'r': 20, 't': 40, 'b': 40}
-        )
+        corr_fig = px.scatter(corr_df, x='tweet_count', y='price_last',
+                              title=f'价格 vs 推文 (相关系数: {correlation:.3f})',
+                              labels={'tweet_count': '推文数', 'price_last': '价格'},
+                              opacity=0.5, color_discrete_sequence=['#3498db'])
+        corr_fig.update_layout(margin={'l': 40, 'r': 20, 't': 40, 'b': 40})
     else:
-        corr_fig = go.Figure()
-        corr_fig.add_annotation(text="暂无数据", showarrow=False)
+        corr_fig = go.Figure().add_annotation(text="暂无数据", showarrow=False)
 
-    # ===== 8. 推文日分布条形图 =====
     hourly_df = get_hourly_distribution()
     if not hourly_df.empty:
-        hour_fig = px.bar(
-            hourly_df,
-            x='hour',
-            y='avg_tweets',
-            title='24小时平均推文数',
-            labels={'hour': 'UTC 小时', 'avg_tweets': '平均推文数'},
-            color='avg_tweets',
-            color_continuous_scale='Blues'
-        )
-        hour_fig.update_layout(
-            xaxis={'tickmode': 'linear', 'dtick': 2},
-            showlegend=False,
-            margin={'l': 40, 'r': 20, 't': 40, 'b': 40}
-        )
+        hour_fig = px.bar(hourly_df, x='hour', y='avg_tweets', title='24小时平均推文数',
+                          labels={'hour': 'UTC 小时', 'avg_tweets': '平均推文数'},
+                          color='avg_tweets', color_continuous_scale='Blues')
+        hour_fig.update_layout(xaxis={'tickmode': 'linear', 'dtick': 2}, showlegend=False,
+                               margin={'l': 40, 'r': 20, 't': 40, 'b': 40})
     else:
-        hour_fig = go.Figure()
-        hour_fig.add_annotation(text="暂无数据", showarrow=False)
+        hour_fig = go.Figure().add_annotation(text="暂无数据", showarrow=False)
 
-    # ===== 9. 各区间平均存活时长 =====
     survival_df = get_survival_by_range()
     if not survival_df.empty:
         survival_fig = go.Figure()
         survival_fig.add_trace(go.Bar(
-            x=survival_df['range_label'],
-            y=survival_df['avg_survival_hours'],
-            text=survival_df['sample_count'].astype(str),
-            textposition='outside',
-            marker_color='#3498db',
-            hovertemplate='区间: %{x}<br>平均存活: %{y:.1f}h<br>样本量: %{text}<extra></extra>'
+            x=survival_df['range_label'], y=survival_df['avg_survival_hours'],
+            text=survival_df['sample_count'].astype(str), textposition='outside',
+            marker_color='#3498db', hovertemplate='区间: %{x}<br>平均存活: %{y:.1f}h<br>样本量: %{text}<extra></extra>'
         ))
-        survival_fig.update_layout(
-            xaxis={'title': '推文区间', 'tickangle': -45},
-            yaxis={'title': '平均存活时长 (小时)'},
-            margin={'l': 50, 'r': 20, 't': 20, 'b': 80}
-        )
+        survival_fig.update_layout(xaxis={'title': '推文区间', 'tickangle': -45}, yaxis={'title': '平均存活时长 (小时)'},
+                                   margin={'l': 50, 'r': 20, 't': 20, 'b': 80})
     else:
-        survival_fig = go.Figure()
-        survival_fig.add_annotation(text="暂无数据", showarrow=False)
+        survival_fig = go.Figure().add_annotation(text="暂无数据", showarrow=False)
 
     return kpi_cards, ma_cards, heatmap_fig, tweet_fig, heatmap2_fig, hist_fig, corr_fig, hour_fig, survival_fig
+
+
+# ========== 推文探索器回调 ==========
+
+@callback(
+    Output('tweet-explorer-event', 'options'),
+    Input('insights-time-range', 'value')
+)
+def populate_event_dropdown(_):
+    events_df = get_event_timeline_events()
+    if events_df.empty:
+        return []
+    return [
+        {'label': row['slug'][:40] + '...' if len(row['slug']) > 40 else row['slug'], 'value': row['id']}
+        for _, row in events_df.iterrows()
+    ]
+
+
+@callback(
+    Output('tweet-explorer-event-container', 'style'),
+    Output('tweet-explorer-date-container', 'style'),
+    Input('tweet-explorer-mode', 'value')
+)
+def toggle_explorer_inputs(mode):
+    if mode == 'event':
+        return {'display': 'inline-block', 'marginRight': '15px'}, {'display': 'none'}
+    elif mode == 'custom':
+        return {'display': 'none'}, {'display': 'inline-block'}
+    else:
+        return {'display': 'none'}, {'display': 'none'}
+
+
+@callback(
+    Output('tweet-explorer-stats', 'children'),
+    Output('tweet-explorer-heatmap', 'figure'),
+    Input('tweet-explorer-mode', 'value'),
+    Input('tweet-explorer-event', 'value'),
+    Input('tweet-explorer-start-date', 'value'),
+    Input('tweet-explorer-end-date', 'value')
+)
+def update_tweet_explorer(mode, event_id, start_date, end_date):
+    today = datetime.now().date()
+
+    if mode == 'event' and event_id:
+        ev_start, ev_end = get_event_time_range(event_id)
+        if ev_start:
+            start_date = ev_start[:10]
+            end_date = ev_end[:10]
+        else:
+            start_date = None
+            end_date = None
+    elif mode == '7d':
+        start_date = (today - timedelta(days=7)).isoformat()
+        end_date = today.isoformat()
+    elif mode == '30d':
+        start_date = (today - timedelta(days=30)).isoformat()
+        end_date = today.isoformat()
+    elif mode == '90d':
+        start_date = (today - timedelta(days=90)).isoformat()
+        end_date = today.isoformat()
+    elif mode == 'custom':
+        pass
+    else:
+        start_date = None
+        end_date = None
+
+    df = get_tweet_matrix(start_date, end_date)
+    if df.empty:
+        empty_fig = go.Figure()
+        empty_fig.add_annotation(text="暂无数据", showarrow=False)
+        return html.Div("暂无数据"), empty_fig
+
+    # ---- 统计摘要卡 ----
+    total_tweets = df['tweet_count'].sum()
+    avg_per_hour = df['tweet_count'].mean()
+    peak_hour = df.loc[df['tweet_count'].idxmax()] if not df.empty else None
+    days_count = len(df['date'].unique())
+
+    stats_cards = html.Div([
+        html.Div([
+            html.Div("📊 总推文", style={'fontSize': '12px', 'color': '#6c757d'}),
+            html.Div(f"{int(total_tweets):,}", style={'fontSize': '20px', 'fontWeight': 'bold'})
+        ], style={'textAlign': 'center', 'padding': '8px 12px', 'backgroundColor': 'white', 'borderRadius': '6px',
+                  'boxShadow': '0 1px 3px rgba(0,0,0,0.1)', 'minWidth': '80px'}),
+        html.Div([
+            html.Div("📈 平均/小时", style={'fontSize': '12px', 'color': '#6c757d'}),
+            html.Div(f"{avg_per_hour:.1f}", style={'fontSize': '20px', 'fontWeight': 'bold'})
+        ], style={'textAlign': 'center', 'padding': '8px 12px', 'backgroundColor': 'white', 'borderRadius': '6px',
+                  'boxShadow': '0 1px 3px rgba(0,0,0,0.1)', 'minWidth': '80px'}),
+        html.Div([
+            html.Div("🔥 峰值小时", style={'fontSize': '12px', 'color': '#6c757d'}),
+            html.Div(f"{peak_hour['hour']}:00" if peak_hour is not None else "N/A",
+                     style={'fontSize': '20px', 'fontWeight': 'bold'})
+        ], style={'textAlign': 'center', 'padding': '8px 12px', 'backgroundColor': 'white', 'borderRadius': '6px',
+                  'boxShadow': '0 1px 3px rgba(0,0,0,0.1)', 'minWidth': '80px'}),
+        html.Div([
+            html.Div("📅 天数", style={'fontSize': '12px', 'color': '#6c757d'}),
+            html.Div(str(days_count), style={'fontSize': '20px', 'fontWeight': 'bold'})
+        ], style={'textAlign': 'center', 'padding': '8px 12px', 'backgroundColor': 'white', 'borderRadius': '6px',
+                  'boxShadow': '0 1px 3px rgba(0,0,0,0.1)', 'minWidth': '80px'}),
+    ], style={
+        'display': 'flex', 'flexWrap': 'wrap', 'gap': '15px', 'justifyContent': 'space-around'
+    })
+
+    # ---- 热力图（横轴：日期，纵轴：小时） ----
+    pivot = df.pivot_table(
+        index='hour',
+        columns='date',
+        values='tweet_count',
+        fill_value=0,
+        aggfunc='sum'
+    )
+    pivot = pivot.sort_index(axis=1)
+
+    n_hours = len(pivot.index)
+    n_cols = len(pivot.columns)
+
+    # 计算高度：每个小时约 40px，最低 500px，最高 1200px
+    height = max(500, min(1200, n_hours * 40 + 100))
+
+    # 计算宽度：每个日期约 50px，最低 600px，加上边距
+    width = max(600, n_cols * 50 + 150)
+
+    text_values = pivot.values.astype(str)
+
+    heatmap_fig = go.Figure(data=go.Heatmap(
+        z=pivot.values,
+        x=pivot.columns,
+        y=pivot.index.astype(str) + ':00',
+        text=text_values,
+        texttemplate='%{text}',
+        textfont={'size': 11, 'color': '#2c3e50'},
+        colorscale='Oranges',
+        hovertemplate='日期: %{x}<br>小时: %{y}<br>推文: %{z}<extra></extra>'
+    ))
+
+    # 取消固定比例，让图形可以水平拉伸，但高度固定
+    heatmap_fig.update_yaxes(
+        tickfont={'size': 11}
+    )
+
+    heatmap_fig.update_xaxes(
+        tickangle=-45,
+        tickfont={'size': 10}
+    )
+
+    heatmap_fig.update_layout(
+        xaxis_title='日期',
+        yaxis_title='小时 (UTC)',
+        margin={'l': 80, 'r': 20, 't': 20, 'b': 100},
+        height=height,
+        width=width,
+        dragmode='zoom',
+        autosize=False
+    )
+
+    return stats_cards, heatmap_fig
