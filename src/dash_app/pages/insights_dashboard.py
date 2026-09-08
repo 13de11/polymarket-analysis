@@ -9,7 +9,7 @@
 """
 
 import dash
-from dash import html, dcc, Input, Output, callback
+from dash import html, dcc, Input, Output, callback,dash_table
 import plotly.express as px
 import plotly.graph_objects as go
 import pandas as pd
@@ -201,7 +201,7 @@ def layout():
                     ),
                 ], style={'display': 'inline-block', 'marginRight': '15px'}),
 
-                # 事件选择（仅在 mode='event' 时显示）
+                # 事件选择
                 html.Div([
                     html.Label("事件:", style={'fontWeight': 'bold', 'marginRight': '10px'}),
                     dcc.Dropdown(
@@ -212,7 +212,7 @@ def layout():
                     ),
                 ], id='tweet-explorer-event-container', style={'display': 'none'}),
 
-                # 自定义日期范围（仅在 mode='custom' 时显示）
+                # 自定义日期
                 html.Div([
                     html.Label("开始日期:", style={'fontWeight': 'bold', 'marginRight': '10px'}),
                     dcc.Input(
@@ -241,23 +241,18 @@ def layout():
             # 统计摘要卡
             html.Div(id='tweet-explorer-stats', style={'marginBottom': '15px'}),
 
-            # 热力图
-            html.Div([
-                dcc.Graph(
-                    id='tweet-explorer-heatmap',
-                    style={'height': '450px', 'width': '100%'},
-                    config={'displayModeBar': True, 'scrollZoom': True}
-                ),
-                html.Div([
-                    html.Strong("📖 如何阅读："),
-                    html.Span("热力图展示每个日期-小时组合的推文数量，颜色越深表示推文越多。拖动底部的滑块可以查看不同时间段。",
-                              style={'color': '#495057', 'fontSize': '12px'}),
-                    html.Br(),
-                    html.Strong("💡 统计意义："),
-                    html.Span("可以快速识别推文爆发日和高频时段，帮助判断市场关注度的变化。",
-                              style={'color': '#495057', 'fontSize': '12px'})
-                ], style={'padding': '8px 12px', 'backgroundColor': '#f1f3f5', 'borderRadius': '4px', 'marginTop': '8px'})
-            ], style={'overflowX': 'auto'}),
+            # 表格容器
+            html.Div(id='tweet-explorer-table', style={
+                'overflowX': 'auto',
+                'marginTop': '10px',
+                'width': '100%',
+                'minHeight': '300px',
+                'border': '1px solid #dee2e6',
+                'borderRadius': '4px',
+                'padding': '10px',
+                'backgroundColor': 'white'
+            }),
+
         ], style={'marginBottom': 20}),
 
         dcc.Store(id='insights-store', data={}),
@@ -448,20 +443,21 @@ def toggle_explorer_inputs(mode):
 
 @callback(
     Output('tweet-explorer-stats', 'children'),
-    Output('tweet-explorer-heatmap', 'figure'),
+    Output('tweet-explorer-table', 'children'),
     Input('tweet-explorer-mode', 'value'),
     Input('tweet-explorer-event', 'value'),
     Input('tweet-explorer-start-date', 'value'),
     Input('tweet-explorer-end-date', 'value')
 )
 def update_tweet_explorer(mode, event_id, start_date, end_date):
+    import plotly.graph_objects as go
     today = datetime.now().date()
 
     if mode == 'event' and event_id:
         ev_start, ev_end = get_event_time_range(event_id)
         if ev_start:
-            start_date = ev_start[:10]
-            end_date = ev_end[:10]
+            start_date = ev_start
+            end_date = ev_end
         else:
             start_date = None
             end_date = None
@@ -482,15 +478,143 @@ def update_tweet_explorer(mode, event_id, start_date, end_date):
 
     df = get_tweet_matrix(start_date, end_date)
     if df.empty:
-        empty_fig = go.Figure()
-        empty_fig.add_annotation(text="暂无数据", showarrow=False)
-        return html.Div("暂无数据"), empty_fig
+        return html.Div("暂无数据"), html.Div("暂无数据")
+
+    # ---- 构建矩阵 ----
+    pivot = df.pivot_table(
+        index='hour',
+        columns='date',
+        values='tweet_count',
+        fill_value=0,
+        aggfunc='sum'
+    )
+    pivot = pivot.sort_index(axis=1)
+
+    # ---- 计算统计量 ----
+    hour_indices = [int(h) for h in pivot.index.tolist()]
+    date_labels = [d for d in pivot.columns.tolist()]
+
+    # ---- 判断统计期 ----
+    stat_start_dt = None
+    stat_end_dt = None
+    if mode == 'event' and event_id:
+        stat_start, stat_end = get_event_time_range(event_id)
+        if stat_start:
+            stat_start_dt = pd.to_datetime(stat_start)
+            stat_end_dt = pd.to_datetime(stat_end) - pd.Timedelta(hours=1)
+        else:
+            stat_start_dt = None
+            stat_end_dt = None
+    else:
+        stat_start_dt = None
+        stat_end_dt = None
+
+    def is_in_stat_period(date_str, hour_str):
+        if stat_start_dt is None or stat_end_dt is None:
+            return True
+        try:
+            dt = pd.to_datetime(date_str) + pd.Timedelta(hours=int(hour_str))
+            return stat_start_dt <= dt <= stat_end_dt
+        except:
+            return True
+
+    # ---- 只统计活跃期内的总推文 ----
+    total_tweets = 0
+    for i, hour_val in enumerate(hour_indices):
+        for j, date_label in enumerate(date_labels):
+            if is_in_stat_period(date_label, f"{hour_val:02d}"):
+                total_tweets += int(pivot.iloc[i, j])
+
+    # ---- 计算行平均值（只统计活跃期） ----
+    row_avg_values = []
+    for i, hour_val in enumerate(hour_indices):
+        active_vals = []
+        for j, date_label in enumerate(date_labels):
+            if is_in_stat_period(date_label, f"{hour_val:02d}"):
+                active_vals.append(int(pivot.iloc[i, j]))
+        if active_vals:
+            row_avg_values.append(round(sum(active_vals) / len(active_vals), 1))
+        else:
+            row_avg_values.append(0)
+    row_avg = pd.Series(row_avg_values, index=pivot.index)
+
+    # ---- 计算列总计（只统计活跃期） ----
+    col_total_values = []
+    for j, date_label in enumerate(date_labels):
+        active_vals = []
+        for i, hour_val in enumerate(hour_indices):
+            if is_in_stat_period(date_label, f"{hour_val:02d}"):
+                active_vals.append(int(pivot.iloc[i, j]))
+        if active_vals:
+            col_total_values.append(sum(active_vals))
+        else:
+            col_total_values.append(0)
+    col_total = pd.Series(col_total_values, index=pivot.columns)
+
+    # ---- 计算行平均值（只统计活跃期内的数据） ----
+    row_avg_values = []
+    for i, hour_val in enumerate(hour_indices):
+        active_vals = []
+        for j, date_label in enumerate(date_labels):
+            if is_in_stat_period(date_label, f"{hour_val:02d}"):
+                active_vals.append(int(pivot.iloc[i, j]))
+        if active_vals:
+            row_avg_values.append(round(sum(active_vals) / len(active_vals), 1))
+        else:
+            row_avg_values.append(0)
+    row_avg = pd.Series(row_avg_values, index=pivot.index)
+    col_total = pivot.sum(axis=0)
+
+    # ---- 判断统计期（用于筛选总推文） ----
+    stat_start_dt = None
+    stat_end_dt = None
+    if mode == 'event' and event_id:
+        stat_start, stat_end = get_event_time_range(event_id)
+        if stat_start:
+            stat_start_dt = pd.to_datetime(stat_start)
+            stat_end_dt = pd.to_datetime(stat_end) - pd.Timedelta(hours=1)
+        else:
+            stat_start_dt = None
+            stat_end_dt = None
+    else:
+        stat_start_dt = None
+        stat_end_dt = None
+
+    def is_in_stat_period(date_str, hour_str):
+        if stat_start_dt is None or stat_end_dt is None:
+            return True
+        try:
+            dt = pd.to_datetime(date_str) + pd.Timedelta(hours=int(hour_str))
+            return stat_start_dt <= dt <= stat_end_dt
+        except:
+            return True
+
+    # 只统计活跃期内的推文总数
+    total_tweets = 0
+    for i, hour_val in enumerate(hour_indices):
+        for j, date_label in enumerate(date_labels):
+            if is_in_stat_period(date_label, f"{hour_val:02d}"):
+                total_tweets += int(pivot.iloc[i, j])
 
     # ---- 统计摘要卡 ----
-    total_tweets = df['tweet_count'].sum()
     avg_per_hour = df['tweet_count'].mean()
     peak_hour = df.loc[df['tweet_count'].idxmax()] if not df.empty else None
     days_count = len(df['date'].unique())
+
+    if days_count >= 2:
+        dates_sorted = sorted(df['date'].unique())
+        latest_day = dates_sorted[-1]
+        prev_day = dates_sorted[-2]
+        latest_total = df[df['date'] == latest_day]['tweet_count'].sum()
+        prev_total = df[df['date'] == prev_day]['tweet_count'].sum()
+        if latest_total > prev_total * 1.1:
+            trend = "↑"
+        elif latest_total < prev_total * 0.9:
+            trend = "↓"
+        else:
+            trend = "→"
+    else:
+        trend = "—"
 
     stats_cards = html.Div([
         html.Div([
@@ -505,7 +629,7 @@ def update_tweet_explorer(mode, event_id, start_date, end_date):
                   'boxShadow': '0 1px 3px rgba(0,0,0,0.1)', 'minWidth': '80px'}),
         html.Div([
             html.Div("🔥 峰值小时", style={'fontSize': '12px', 'color': '#6c757d'}),
-            html.Div(f"{peak_hour['hour']}:00" if peak_hour is not None else "N/A",
+            html.Div(f"{int(peak_hour['hour']):02d}:00" if peak_hour is not None else "N/A",
                      style={'fontSize': '20px', 'fontWeight': 'bold'})
         ], style={'textAlign': 'center', 'padding': '8px 12px', 'backgroundColor': 'white', 'borderRadius': '6px',
                   'boxShadow': '0 1px 3px rgba(0,0,0,0.1)', 'minWidth': '80px'}),
@@ -514,60 +638,128 @@ def update_tweet_explorer(mode, event_id, start_date, end_date):
             html.Div(str(days_count), style={'fontSize': '20px', 'fontWeight': 'bold'})
         ], style={'textAlign': 'center', 'padding': '8px 12px', 'backgroundColor': 'white', 'borderRadius': '6px',
                   'boxShadow': '0 1px 3px rgba(0,0,0,0.1)', 'minWidth': '80px'}),
+        html.Div([
+            html.Div("📈 趋势", style={'fontSize': '12px', 'color': '#6c757d'}),
+            html.Div(trend, style={'fontSize': '20px', 'fontWeight': 'bold', 'color': '#2ecc71' if trend == '↑' else '#e74c3c' if trend == '↓' else '#f39c12'})
+        ], style={'textAlign': 'center', 'padding': '8px 12px', 'backgroundColor': 'white', 'borderRadius': '6px',
+                  'boxShadow': '0 1px 3px rgba(0,0,0,0.1)', 'minWidth': '80px'}),
     ], style={
         'display': 'flex', 'flexWrap': 'wrap', 'gap': '15px', 'justifyContent': 'space-around'
     })
 
-    # ---- 热力图（横轴：日期，纵轴：小时） ----
-    pivot = df.pivot_table(
-        index='hour',
-        columns='date',
-        values='tweet_count',
-        fill_value=0,
-        aggfunc='sum'
+    # ---- 获取统计期范围 ----
+    stat_start_dt = None
+    stat_end_dt = None
+    if mode == 'event' and event_id:
+        stat_start, stat_end = get_event_time_range(event_id)
+        if stat_start:
+            stat_start_dt = pd.to_datetime(stat_start)
+            stat_end_dt = pd.to_datetime(stat_end) - pd.Timedelta(hours=1)
+        else:
+            stat_start_dt = None
+            stat_end_dt = None
+    else:
+        stat_start_dt = None
+        stat_end_dt = None
+
+    def is_in_stat_period(date_str, hour_str):
+        if stat_start_dt is None or stat_end_dt is None:
+            return True
+        try:
+            dt = pd.to_datetime(date_str) + pd.Timedelta(hours=int(hour_str))
+            return stat_start_dt <= dt <= stat_end_dt
+        except:
+            return True
+
+    # ---- 构建表格 ----
+    header_vals = ['小时'] + date_labels + ['Avg']
+
+    # 计算最大推文数（仅统计活跃期内的值）
+    all_active_values = []
+    for i, hour_val in enumerate(hour_indices):
+        for j, date_label in enumerate(date_labels):
+            val = int(pivot.iloc[i, j])
+            if is_in_stat_period(date_label, f"{hour_val:02d}"):
+                all_active_values.append(val)
+    max_val = max(all_active_values) if all_active_values else 1
+
+    def get_color(value, is_active):
+        if not is_active:
+            return '#e8e8e8'
+        if value == 0:
+            return '#fef9e7'
+        intensity = min(value / max_val, 1.0) if max_val > 0 else 0
+        r = 255
+        g = int(248 - intensity * 180)
+        b = int(230 - intensity * 200)
+        return f'rgb({r}, {g}, {b})'
+
+    # 构建数据行
+    cell_vals = []
+    for i, hour_val in enumerate(hour_indices):
+        row = [f"{hour_val:02d}:00"]
+        hour_str = f"{hour_val:02d}"
+        for j, date_label in enumerate(date_labels):
+            val = int(pivot.iloc[i, j])
+            is_active = is_in_stat_period(date_label, hour_str)
+            if is_active:
+                display_val = val
+                color = get_color(val, True)
+            else:
+                display_val = ''  # 灰色区域显示为空
+                color = '#e8e8e8'
+            row.append({'value': display_val, 'color': color})
+        row.append({'value': round(row_avg.iloc[i], 1), 'color': '#eaf2f8'})
+        cell_vals.append(row)
+
+    # Total 行
+    total_row = ['Total']
+    for j, date_label in enumerate(date_labels):
+        val = int(col_total.iloc[j])
+        total_row.append({'value': val, 'color': '#e8e8e8'})
+    total_row.append({'value': round(total_tweets / len(hour_indices), 1), 'color': '#e8e8e8'})
+    cell_vals.append(total_row)
+
+    # 构建列数据
+    values_list = []
+    colors_list = []
+    for col_idx in range(len(header_vals)):
+        col_vals = []
+        col_colors = []
+        for row in cell_vals:
+            if isinstance(row[col_idx], dict):
+                col_vals.append(row[col_idx]['value'])
+                col_colors.append(row[col_idx]['color'])
+            else:
+                col_vals.append(row[col_idx])
+                col_colors.append('white')
+        values_list.append(col_vals)
+        colors_list.append(col_colors)
+
+    # 动态高度
+    row_height = 28
+    n_rows = len(hour_indices) + 1 + 1
+    fig_height = max(400, n_rows * row_height + 60)
+
+    fig = go.Figure(data=[go.Table(
+        header=dict(
+            values=header_vals,
+            fill_color='#f1f3f5',
+            align='center',
+            font=dict(size=12, color='#2c3e50')
+        ),
+        cells=dict(
+            values=values_list,
+            fill_color=colors_list,
+            align='center',
+            font=dict(size=11, color='#1a1a1a'),
+            format=[''] + ['.0f'] * len(date_labels) + ['.1f']
+        )
+    )])
+
+    fig.update_layout(
+        height=fig_height,
+        margin=dict(l=10, r=10, t=10, b=10)
     )
-    pivot = pivot.sort_index(axis=1)
 
-    n_hours = len(pivot.index)
-    n_cols = len(pivot.columns)
-
-    # 计算高度：每个小时约 40px，最低 500px，最高 1200px
-    height = max(500, min(1200, n_hours * 40 + 100))
-
-    # 计算宽度：每个日期约 50px，最低 600px，加上边距
-    width = max(600, n_cols * 50 + 150)
-
-    text_values = pivot.values.astype(str)
-
-    heatmap_fig = go.Figure(data=go.Heatmap(
-        z=pivot.values,
-        x=pivot.columns,
-        y=pivot.index.astype(str) + ':00',
-        text=text_values,
-        texttemplate='%{text}',
-        textfont={'size': 11, 'color': '#2c3e50'},
-        colorscale='Oranges',
-        hovertemplate='日期: %{x}<br>小时: %{y}<br>推文: %{z}<extra></extra>'
-    ))
-
-    # 取消固定比例，让图形可以水平拉伸，但高度固定
-    heatmap_fig.update_yaxes(
-        tickfont={'size': 11}
-    )
-
-    heatmap_fig.update_xaxes(
-        tickangle=-45,
-        tickfont={'size': 10}
-    )
-
-    heatmap_fig.update_layout(
-        xaxis_title='日期',
-        yaxis_title='小时 (UTC)',
-        margin={'l': 80, 'r': 20, 't': 20, 'b': 100},
-        height=height,
-        width=width,
-        dragmode='zoom',
-        autosize=False
-    )
-
-    return stats_cards, heatmap_fig
+    return stats_cards, dcc.Graph(figure=fig)

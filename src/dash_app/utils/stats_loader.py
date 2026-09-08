@@ -313,15 +313,75 @@ def get_tweet_matrix(start_date: str = None, end_date: str = None) -> pd.DataFra
 
 
 def get_event_time_range(event_id: str) -> tuple:
-    """获取事件的时间范围"""
+    """
+    从 events 表的 slug 解析推文统计周期
+    例如: elon-musk-of-tweets-june-2-june-9
+    返回: (start_date_str, end_date_str)
+    """
     query = """
-        SELECT 
-            start_date as start_time,
-            end_date as end_time
+        SELECT slug
         FROM events
         WHERE id = ?
     """
     df = run_query(query, (event_id,))
     if df.empty:
         return (None, None)
-    return (df['start_time'].iloc[0], df['end_time'].iloc[0])
+
+    slug = df['slug'].iloc[0]
+
+    # 解析格式: elon-musk-of-tweets-{start_month}-{start_day}-{end_month}-{end_day}
+    # 注意：去掉前缀 "elon-musk-of-tweets-"
+    import re
+    parts = slug.replace('elon-musk-of-tweets-', '').split('-')
+    # parts 例如: ['june', '2', 'june', '9']
+    if len(parts) < 4:
+        return (None, None)
+
+    month_map = {
+        'january': 1, 'february': 2, 'march': 3, 'april': 4,
+        'may': 5, 'june': 6, 'july': 7, 'august': 8,
+        'september': 9, 'october': 10, 'november': 11, 'december': 12
+    }
+
+    # 从 slug 中提取月份和日期
+    # 例如 "june-2-june-9" -> start_month=june, start_day=2, end_month=june, end_day=9
+    # 但需要处理 "june-2-june-9-2026" 这种带年份的格式（如果存在）
+    # 用正则提取
+    pattern = r'([a-z]+)-(\d{1,2})-([a-z]+)-(\d{1,2})(?:-(\d{4}))?'
+    match = re.search(pattern, slug)
+    if not match:
+        return (None, None)
+
+    start_month_str = match.group(1)
+    start_day = int(match.group(2))
+    end_month_str = match.group(3)
+    end_day = int(match.group(4))
+    year_str = match.group(5) if match.group(5) else None
+
+    start_month = month_map.get(start_month_str.lower())
+    end_month = month_map.get(end_month_str.lower())
+
+    if not start_month or not end_month:
+        return (None, None)
+
+    # 如果没有年份，从 start_date 或 end_date 获取年份
+    import datetime
+    if year_str:
+        year = int(year_str)
+    else:
+        # 从数据库获取年份
+        year_query = """
+            SELECT strftime('%Y', start_date) as year
+            FROM events
+            WHERE id = ?
+        """
+        year_df = run_query(year_query, (event_id,))
+        if not year_df.empty:
+            year = int(year_df['year'].iloc[0])
+        else:
+            year = 2026  # fallback
+
+    start_dt = datetime.datetime(year, start_month, start_day, 16, 0, 0)
+    end_dt = datetime.datetime(year, end_month, end_day, 16, 0, 0)
+
+    return (start_dt.isoformat(), end_dt.isoformat())
