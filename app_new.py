@@ -7,6 +7,7 @@ sys.path.insert(0, PROJECT_ROOT)
 from dash import Dash, html, dcc, callback, Input, Output
 
 app = Dash(__name__, suppress_callback_exceptions=True)
+server = app.server
 
 print("🔥🔥🔥 app_new.py 被加载了！🔥🔥🔥")
 
