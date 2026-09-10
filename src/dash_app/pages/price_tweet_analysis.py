@@ -1,20 +1,11 @@
 """
 价格-推文分析页面
-- 事件选择器
-- 自动计算目标市场，默认显示前后各2个
-- 价格类型切换 (price_last / price_avg)
-- 三轴图：价格 + 每小时推文 + 累计推文
 """
-
-import dash
 from dash import html, dcc, Input, Output, State, callback
 import plotly.graph_objects as go
 import plotly.express as px
 from plotly.subplots import make_subplots
 import pandas as pd
-import numpy as np
-
-# 不再需要 dash.register_page
 
 from src.dash_app.utils.data_loader import (
     get_elon_tweet_events,
@@ -25,31 +16,13 @@ from src.dash_app.utils.data_loader import (
 )
 
 
-
 def layout():
-    events_df = get_elon_tweet_events()
-
-    # 预计算每个事件的命中市场区间，用于下拉显示
-    event_options = []
-    for _, row in events_df.iterrows():
-        target = get_target_market(row['id'])
-        if target:
-            r_start = int(target['range_start'])
-            r_end = int(target['range_end']) if target['range_end'] and not pd.isna(target['range_end']) else '∞'
-            label = f"{row['slug']} (命中: {r_start}-{r_end})"
-        else:
-            label = row['slug']
-        event_options.append({'label': label, 'value': row['id']})
-
-    # 默认选中最新事件（按 start_date 排序后最后一个）
-    default_event = events_df.iloc[-1]['id'] if not events_df.empty else None
-
     return html.Div([
 
         # ========== 页面标题 ==========
         html.Div([
             html.H2("📊 价格与推文关联分析", style={'marginBottom': 5}),
-            html.P("分析 Elon Musk 推文数量与预测市场价格的关系",
+            html.P("分析推文数量与预测市场价格的关系",
                    style={'color': '#6c757d', 'fontSize': '14px', 'marginTop': 0}),
         ], style={'marginBottom': 20}),
 
@@ -92,9 +65,8 @@ def layout():
                 html.Label("选择事件:", style={'fontWeight': 'bold', 'fontSize': '14px'}),
                 dcc.Dropdown(
                     id='event-selector',
-                    options=event_options,
+                    options=[],
                     placeholder='请选择事件',
-                    value=default_event,
                     style={'width': '100%', 'marginTop': 4}
                 ),
             ], style={'width': '40%', 'display': 'inline-block', 'paddingRight': 15, 'verticalAlign': 'top'}),
@@ -181,55 +153,57 @@ def layout():
         }),
 
         dcc.Store(id='target-market-store', data={}),
-        dcc.Store(id='target-range-store', data={}),
     ])
 
 
-# ==================== 回调函数 ====================
+# ==================== 回调1：更新事件列表 ====================
+@callback(
+    Output('event-selector', 'options'),
+    Output('event-selector', 'value'),
+    Input('series-selector', 'value')
+)
+def update_events(series):
+    print(f"=== update_events 被调用, series={series} ===")
+    events_df = get_elon_tweet_events(series)
+    print(f"事件数: {len(events_df)}")
 
+    if events_df.empty:
+        return [], None
+
+    event_options = []
+    for _, row in events_df.iterrows():
+        target = get_target_market(row['id'])
+        if target:
+            r_start = int(target['range_start'])
+            r_end = int(target['range_end']) if target['range_end'] and not pd.isna(target['range_end']) else '∞'
+            label = f"{row['slug']} (命中: {r_start}-{r_end})"
+        else:
+            label = row['slug']
+        event_options.append({'label': label, 'value': row['id']})
+
+    default_event = events_df.iloc[-1]['id'] if not events_df.empty else None
+    return event_options, default_event
+
+
+# ==================== 回调2：更新市场列表 ====================
 @callback(
     Output('market-selector', 'options'),
     Output('market-selector', 'value'),
     Output('target-market-store', 'data'),
-    Output('target-range-store', 'data'),
     Output('market-hint', 'children'),
     Input('event-selector', 'value')
 )
 def update_markets(event_id):
-    """事件变化时：只显示命中市场前后各5个（共11个），默认选中前后各2个（共5个）"""
     if not event_id:
-        return [], [], {}, {}, ""
+        return [], [], {}, ""
 
     markets_df = get_markets_by_event(event_id)
 
     if markets_df.empty:
-        return [], [], {}, {}, "该事件暂无市场数据"
-
-    # 查找目标市场
-    target = get_target_market(event_id)
-
-    if not target:
-        selected_df = markets_df.head(5)
-        options = []
-        for _, row in selected_df.iterrows():
-            r_start = int(row['range_start'])
-            if pd.isna(row['range_end']) or row['range_end'] is None:
-                label = f"{r_start}-∞"
-            else:
-                label = f"{r_start}-{int(row['range_end'])}"
-            options.append({'label': label, 'value': row['id']})
-        return options, selected_df['id'].tolist(), {}, {}, "⚠️ 未找到 price_last > 0.99 的市场，默认显示前5个"
-
-    target_id = target['id']
-    target_idx = markets_df[markets_df['id'] == target_id].index[0]
-
-    # 前后各5个（共11个）
-    start_idx = max(0, target_idx - 5)
-    end_idx = min(len(markets_df), target_idx + 6)
-    visible_markets = markets_df.iloc[start_idx:end_idx]
+        return [], [], {}, "该事件暂无市场数据"
 
     options = []
-    for _, row in visible_markets.iterrows():
+    for _, row in markets_df.iterrows():
         r_start = int(row['range_start'])
         if pd.isna(row['range_end']) or row['range_end'] is None:
             label = f"{r_start}-∞"
@@ -237,23 +211,34 @@ def update_markets(event_id):
             label = f"{r_start}-{int(row['range_end'])}"
         options.append({'label': label, 'value': row['id']})
 
-    # 默认前后各2个（共5个）
-    default_start = max(0, target_idx - 2)
-    default_end = min(len(markets_df), target_idx + 3)
-    default_ids = markets_df.iloc[default_start:default_end]['id'].tolist()
+    target = get_target_market(event_id)
 
-    target_info = {'id': target_id, 'range_start': target['range_start']}
-    r_start = int(target['range_start'])
-    if pd.isna(target['range_end']) or target['range_end'] is None:
-        target_range = f"{r_start}-∞"
+    if target:
+        target_id = target['id']
+        target_idx = markets_df[markets_df['id'] == target_id].index[0]
+
+        start_idx = max(0, target_idx - 2)
+        end_idx = min(len(markets_df), target_idx + 3)
+
+        selected_ids = markets_df.iloc[start_idx:end_idx]['id'].tolist()
+        target_info = {'id': target_id, 'range_start': target['range_start']}
+
+        r_start = int(target['range_start'])
+        if pd.isna(target['range_end']) or target['range_end'] is None:
+            target_range = f"{r_start}-∞"
+        else:
+            target_range = f"{r_start}-{int(target['range_end'])}"
+
+        hint = f"🎯 默认选中命中市场 {target_range} 及其前后各2个 (共 {len(selected_ids)} 个)"
     else:
-        target_range = f"{r_start}-{int(target['range_end'])}"
+        selected_ids = markets_df.head(5)['id'].tolist()
+        target_info = {}
+        hint = "⚠️ 未找到 price_last > 0.99 的市场，默认显示前5个"
 
-    hint = f"🎯 命中市场 {target_range} | 下拉显示前后各5个 (共 {len(visible_markets)} 个) | 默认选中前后各2个 (共 {len(default_ids)} 个)"
-
-    return options, default_ids, target_info, {'range': target_range}, hint
+    return options, selected_ids, target_info, hint
 
 
+# ==================== 回调3：更新图表 ====================
 @callback(
     Output('main-chart', 'figure'),
     Output('stats-info', 'children'),
@@ -263,7 +248,6 @@ def update_markets(event_id):
     State('target-market-store', 'data'),
 )
 def update_chart(event_id, selected_market_ids, price_type, target_info):
-    """更新图表"""
     if not event_id or not selected_market_ids:
         return go.Figure(), html.Div("请选择事件和市场")
 
@@ -277,12 +261,10 @@ def update_chart(event_id, selected_market_ids, price_type, target_info):
 
     tweet_df = get_tweet_data(event_id, min_ts, max_ts)
 
-    # 构建图表
     fig = make_subplots(specs=[[{"secondary_y": True}]])
 
     price_col = price_type
 
-    # 获取市场信息
     markets_df = get_markets_by_event(event_id)
     market_names = {}
     for _, row in markets_df.iterrows():
@@ -293,14 +275,12 @@ def update_chart(event_id, selected_market_ids, price_type, target_info):
             name = f"{r_start}-{int(row['range_end'])}"
         market_names[row['id']] = name
 
-    # ---- 分配颜色 ----
     color_palette = px.colors.qualitative.Plotly
     non_target_ids = [m for m in selected_market_ids if not (target_info and target_info.get('id') == m)]
     color_map = {}
     for idx, market_id in enumerate(non_target_ids):
         color_map[market_id] = color_palette[idx % len(color_palette)]
 
-    # ---- 添加价格曲线 ----
     for market_id in selected_market_ids:
         df_market = price_df[price_df['market_id'] == market_id]
         if df_market.empty:
@@ -335,7 +315,6 @@ def update_chart(event_id, selected_market_ids, price_type, target_info):
             secondary_y=False
         )
 
-    # ---- 推文柱状图 ----
     if not tweet_df.empty:
         hovertemplate_bar = (
             '每小时推文数: %{y}'
@@ -353,7 +332,6 @@ def update_chart(event_id, selected_market_ids, price_type, target_info):
             secondary_y=True
         )
 
-        # 累计推文
         tweet_df['cumsum'] = tweet_df['tweet_count'].cumsum()
         hovertemplate_cum = (
             '累计推文数: %{y:,.0f}'
@@ -371,7 +349,6 @@ def update_chart(event_id, selected_market_ids, price_type, target_info):
             secondary_y=True
         )
 
-    # ========== 布局设置 ==========
     fig.update_layout(
         autosize=True,
         title=dict(
@@ -400,8 +377,6 @@ def update_chart(event_id, selected_market_ids, price_type, target_info):
         ),
         yaxis2=dict(
             showgrid=False,
-            rangemode='tozero',  # 从 0 开始
-            fixedrange=True,  # 禁止用户拖拽缩放
         ),
         legend=dict(
             orientation='h',
@@ -414,17 +389,15 @@ def update_chart(event_id, selected_market_ids, price_type, target_info):
         hovermode='x unified',
         dragmode='zoom',
         margin=dict(l=60, r=80, t=50, b=120),
-        # 悬停标签半透明
         hoverlabel=dict(
-            bgcolor='rgba(255,255,255,0.9)',
+            bgcolor='rgba(255,255,255,0.8)',
             font_size=12,
             font_family='Arial'
         )
     )
 
-    # 设置顶部时间格式为 ISO
     fig.update_xaxes(
-        hoverformat='%Y-%m-%d %H:%M:%S UTC',  # 强制 ISO 格式
+        hoverformat='%Y-%m-%d %H:%M:%S UTC',
         rangeslider=dict(
             visible=True,
             thickness=0.05,
@@ -442,9 +415,7 @@ def update_chart(event_id, selected_market_ids, price_type, target_info):
             side='right',
             position=0.92,
             color='rgba(50, 150, 255, 0.7)',
-            showgrid=False,
-            rangemode='tozero',  # 从 0 开始
-            fixedrange=True  # 禁止用户拖拽缩放（避免干扰悬停）
+            showgrid=False
         )
     )
 
@@ -452,7 +423,6 @@ def update_chart(event_id, selected_market_ids, price_type, target_info):
         if trace.name == '累计推文':
             trace.yaxis = 'y3'
 
-    # ---- 统计信息 ----
     stats_items = []
 
     stats_items.append(html.Span([

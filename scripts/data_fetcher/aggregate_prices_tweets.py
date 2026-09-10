@@ -68,7 +68,7 @@ def get_events(conn, event_slug=None, event_ids=None):
     query = """
         SELECT id, slug
         FROM events
-        WHERE series_slug = 'elon-tweets'
+        WHERE series_slug IN ('elon-tweets', 'elon-tweets-48h')
           AND closed = 1
           AND start_date >= '2025-11-29'
     """

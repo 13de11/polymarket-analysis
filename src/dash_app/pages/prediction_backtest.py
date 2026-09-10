@@ -11,8 +11,6 @@ from typing import Dict, Any
 import pandas as pd
 import numpy as np
 
-dash.register_page(__name__, path='/backtest', name='📈 预测回测')
-
 from src.dash_app.components.params_panel import create_params_panel, register_params_callbacks
 from src.dash_app.utils.data_loader import (
     get_price_data_for_market,
@@ -181,10 +179,11 @@ def layout():
     Output('backtest-status-text', 'children'),
     Input('backtest-tabs', 'value'),
     Input('backtest-params-store', 'data'),
+    Input('series-selector', 'value'),  # ← 新增这一行
     State('backtest-preview-btn', 'n_clicks'),
     State('backtest-run-btn', 'n_clicks'),
 )
-def render_tab_content(tab_name, params, preview_clicks, run_clicks):
+def render_tab_content(tab_name, params, series, preview_clicks, run_clicks):  # ← 新增 series 参数
     """根据选中的 Tab 和参数渲染内容"""
 
     # ===== 信号预览 Tab =====
@@ -198,7 +197,7 @@ def render_tab_content(tab_name, params, preview_clicks, run_clicks):
             ]), status_text
 
         # 生成信号预览图
-        fig, stats = generate_signal_preview(params)
+        fig, stats = generate_signal_preview(params, series)  # ← 传入 series
         stats_cards = stats.get('_cards', html.Div("无统计数据"))
         status_text = f"✅ 信号预览已更新 | 信号总数: {stats.get('total_signals', 0)} | 方向准确率: {stats.get('overall_accuracy', 0) * 100:.1f}%"
         return html.Div([
@@ -223,7 +222,7 @@ def render_tab_content(tab_name, params, preview_clicks, run_clicks):
             ]), "请选择事件和市场，点击「运行回测」"
 
         # 运行回测
-        result = run_backtest(params)
+        result = run_backtest(params, series)  # ← 传入 series
         if result is None:
             return html.Div([
                 html.P("❌ 回测运行失败，请检查参数",
@@ -480,7 +479,7 @@ def render_tab_content(tab_name, params, preview_clicks, run_clicks):
 
 
 # ==================== 信号预览生成函数 ====================
-def generate_signal_preview(params):
+def generate_signal_preview(params, series='7d'):  # ← 新增 series 参数（暂不使用）
     """生成信号预览图表和统计"""
     market_id = params.get('market_id')
     price_type = params.get('price_type', 'price_last')
@@ -678,7 +677,7 @@ def generate_signal_preview(params):
 
 # ==================== 回测执行函数 ====================
 
-def run_backtest(params: dict):
+def run_backtest(params: dict, series='7d'):  # ← 新增 series 参数（暂不使用）
     """执行回测"""
     try:
         market_id = params.get('market_id')

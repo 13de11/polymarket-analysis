@@ -32,7 +32,7 @@ print("\n📌 步骤 1: 获取符合条件的事件")
 events = src_conn.execute("""
     SELECT id, slug, start_date, end_date
     FROM events
-    WHERE series_slug = 'elon-tweets'
+    WHERE series_slug IN ('elon-tweets', 'elon-tweets-48h')
       AND start_date >= '2026-05-30'
 """).fetchall()
 

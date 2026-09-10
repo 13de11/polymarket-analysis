@@ -10,6 +10,29 @@ from typing import Optional
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 DB_PATH = str(PROJECT_ROOT / "data" / "elon_tweets_analysis.db")
 
+# ========== 系列过滤工具 ==========
+
+def get_series_slug_pattern(series: str = '7d') -> str:
+    """
+    根据系列返回 slug 匹配模式
+    - '7d': elon-musk-of-tweets (7天事件)
+    - '48h': elon-musk-of-tweets-48h (48小时事件)
+    - 'all': 所有事件
+    """
+    if series == '7d':
+        return "slug LIKE 'elon-musk-of-tweets%' AND slug NOT LIKE '%-48h%'"
+    elif series == '48h':
+        return "slug LIKE 'elon-musk-of-tweets%-48h%'"
+    else:  # 'all'
+        return "slug LIKE 'elon-musk-of-tweets%'"
+
+
+def get_series_condition(series: str = '7d', table_alias: str = 'e') -> str:
+    """生成 SQL WHERE 条件"""
+    pattern = get_series_slug_pattern(series)
+    return f"({table_alias}.slug LIKE 'elon-musk-of-tweets%' AND {table_alias}.slug NOT LIKE '%-48h%')" if series == '7d' else \
+           f"{table_alias}.slug LIKE 'elon-musk-of-tweets%-48h%'" if series == '48h' else \
+           f"{table_alias}.slug LIKE 'elon-musk-of-tweets%'"
 
 def run_query(query: str, params=()) -> pd.DataFrame:
     """执行 SQL 查询并返回 DataFrame"""
@@ -21,16 +44,53 @@ def run_query(query: str, params=()) -> pd.DataFrame:
     return df
 
 
-def get_elon_tweet_events():
+def get_elon_tweet_events(series: str = '7d'):
+    """获取已结束的 elon-tweets 系列事件（支持系列过滤）"""
     from datetime import datetime, timezone
+    import re
+
     now_utc = datetime.now(timezone.utc).isoformat()
+
+    # 先获取所有事件
     query = """
         SELECT id, slug, game_start_time, start_date, end_date
         FROM events
-        WHERE end_date < ?
+        WHERE slug LIKE 'elon-musk-of-tweets%'
+          AND end_date < ?
         ORDER BY start_date
     """
-    return run_query(query, (now_utc,))
+    df = run_query(query, (now_utc,))
+
+    if df.empty:
+        return df
+
+    # 解析日期跨度，按系列过滤
+    def parse_days(slug):
+        pattern = r'elon-musk-of-tweets-([a-z]+)-(\d{1,2})-([a-z]+)-(\d{1,2})(?:-(\d{4}))?'
+        match = re.search(pattern, slug)
+        if not match:
+            return 7
+        month_map = {
+            'january': 1, 'february': 2, 'march': 3, 'april': 4,
+            'may': 5, 'june': 6, 'july': 7, 'august': 8,
+            'september': 9, 'october': 10, 'november': 11, 'december': 12
+        }
+        start_month = month_map.get(match.group(1).lower(), 1)
+        start_day = int(match.group(2))
+        end_month = month_map.get(match.group(3).lower(), 1)
+        end_day = int(match.group(4))
+        year = int(match.group(5)) if match.group(5) else 2026
+        start_date = datetime(year, start_month, start_day)
+        end_date = datetime(year, end_month, end_day)
+        return (end_date - start_date).days
+
+    # 根据系列过滤
+    if series == '7d':
+        df = df[df['slug'].apply(parse_days) == 7]
+    elif series == '48h':
+        df = df[df['slug'].apply(parse_days) == 2]
+
+    return df
 
 
 def get_markets_by_event(event_id: str):

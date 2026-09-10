@@ -24,9 +24,9 @@ from src.dash_app.utils.data_loader import (
 )
 
 
-def create_params_panel(default_event_id=None):
+def create_params_panel(default_event_id=None, series='7d'):
     """创建完整的参数配置面板"""
-    events_df = get_elon_tweet_events()
+    events_df = get_elon_tweet_events(series)  # 传入 series
     event_options = []
     for _, row in events_df.iterrows():
         target = get_target_market(row['id'])

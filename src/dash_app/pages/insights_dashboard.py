@@ -5,11 +5,11 @@
 - 推文全量分析
 - 命中区间分布
 - 各区间平均存活时长
-- 推文探索器（优化版）
+- 推文探索器
 """
 
 import dash
-from dash import html, dcc, Input, Output, callback,dash_table
+from dash import html, dcc, Input, Output, callback
 import plotly.express as px
 import plotly.graph_objects as go
 import pandas as pd
@@ -44,7 +44,7 @@ def layout():
         # ---- KPI 指标卡 ----
         html.Div([
             html.Strong("📊 核心指标含义："),
-            html.Span("总事件 = 所有已结束的 elon-tweets 事件数；总推文 = 覆盖时间内的推文总量；",
+            html.Span("总事件 = 所有已结束的事件数；总推文 = 覆盖时间内的推文总量；",
                       style={'marginLeft': '10px'}),
             html.Span("命中市场 = 最终价格 > 0.99 的子市场数；最热区间 = 历史上命中次数最多的推文区间。",
                       style={'marginLeft': '5px'}),
@@ -111,7 +111,7 @@ def layout():
                               style={'color': '#495057', 'fontSize': '12px'}),
                     html.Br(),
                     html.Strong("💡 统计意义："),
-                    html.Span("可以识别马斯克推文的活跃时段和周期规律，帮助优化策略的时间窗口。",
+                    html.Span("可以识别推文的活跃时段和周期规律，帮助优化策略的时间窗口。",
                               style={'color': '#495057', 'fontSize': '12px'})
                 ], style={'padding': '8px 12px', 'backgroundColor': '#f1f3f5', 'borderRadius': '4px', 'marginTop': '8px'})
             ]),
@@ -190,10 +190,10 @@ def layout():
                     dcc.Dropdown(
                         id='tweet-explorer-mode',
                         options=[
+                            {'label': '事件', 'value': 'event'},
                             {'label': '近7天', 'value': '7d'},
                             {'label': '近30天', 'value': '30d'},
                             {'label': '近90天', 'value': '90d'},
-                            {'label': '事件', 'value': 'event'},
                             {'label': '自定义', 'value': 'custom'},
                         ],
                         value='7d',
@@ -208,22 +208,24 @@ def layout():
                         id='tweet-explorer-event',
                         options=[],
                         placeholder='选择事件',
-                        style={'width': '250px', 'display': 'inline-block'}
+                        style={'width': '350px', 'display': 'inline-block'}
                     ),
                 ], id='tweet-explorer-event-container', style={'display': 'none'}),
 
                 # 自定义日期
                 html.Div([
                     html.Label("开始日期:", style={'fontWeight': 'bold', 'marginRight': '10px'}),
-                    dcc.Input(
+                    dcc.DatePickerSingle(
                         id='tweet-explorer-start-date',
-                        type='date',
+                        display_format='YYYY-MM-DD',
+                        placeholder='选择日期',
                         style={'width': '140px', 'display': 'inline-block', 'marginRight': '15px'}
                     ),
                     html.Label("结束日期:", style={'fontWeight': 'bold', 'marginRight': '10px'}),
-                    dcc.Input(
+                    dcc.DatePickerSingle(
                         id='tweet-explorer-end-date',
-                        type='date',
+                        display_format='YYYY-MM-DD',
+                        placeholder='选择日期',
                         style={'width': '140px', 'display': 'inline-block'}
                     ),
                 ], id='tweet-explorer-date-container', style={'display': 'none'}),
@@ -242,16 +244,7 @@ def layout():
             html.Div(id='tweet-explorer-stats', style={'marginBottom': '15px'}),
 
             # 表格容器
-            html.Div(id='tweet-explorer-table', style={
-                'overflowX': 'auto',
-                'marginTop': '10px',
-                'width': '100%',
-                'minHeight': '300px',
-                'border': '1px solid #dee2e6',
-                'borderRadius': '4px',
-                'padding': '10px',
-                'backgroundColor': 'white'
-            }),
+            html.Div(id='tweet-explorer-table', style={'overflowX': 'auto', 'marginTop': '10px'}),
 
         ], style={'marginBottom': 20}),
 
@@ -271,10 +264,11 @@ def layout():
     Output('insights-correlation', 'figure'),
     Output('insights-hourly-distribution', 'figure'),
     Output('insights-survival-chart', 'figure'),
-    Input('insights-time-range', 'value')
+    Input('insights-time-range', 'value'),
+    Input('series-selector', 'value')
 )
-def update_insights(time_range):
-    stats = get_overview_stats()
+def update_insights(time_range, series):
+    stats = get_overview_stats(series)
     kpi_cards = html.Div([
         html.Div([
             html.Div("📅 总事件", style={'fontSize': '12px', 'color': '#6c757d'}),
@@ -319,7 +313,7 @@ def update_insights(time_range):
                   'boxShadow': '0 1px 3px rgba(0,0,0,0.1)', 'minWidth': '80px'}),
     ], style={'display': 'flex', 'flexWrap': 'wrap', 'gap': '15px', 'justifyContent': 'space-around'})
 
-    hit_df = get_hit_distribution()
+    hit_df = get_hit_distribution(series)
     if not hit_df.empty:
         events_unique = hit_df['event_short'].unique()
         if len(events_unique) > 30:
@@ -365,10 +359,11 @@ def update_insights(time_range):
     else:
         heatmap2_fig = go.Figure().add_annotation(text="暂无数据", showarrow=False)
 
-    hist_df = get_histogram_data()
+    hist_df = get_histogram_data(series)
     if not hist_df.empty:
         hist_fig = px.bar(hist_df.sort_values('range_start'), x='range_label', y='hit_count',
-                          title='各区间命中次数', labels={'x': '推文区间', 'y': '命中次数'}, color='hit_count',
+                          title='各区间命中次数（所有事件合计）',
+                          labels={'x': '推文区间', 'y': '命中次数'}, color='hit_count',
                           color_continuous_scale='Reds')
         hist_fig.update_layout(xaxis={'tickangle': -45}, showlegend=False, margin={'l': 40, 'r': 20, 't': 40, 'b': 80})
     else:
@@ -415,14 +410,15 @@ def update_insights(time_range):
 
 @callback(
     Output('tweet-explorer-event', 'options'),
-    Input('insights-time-range', 'value')
+    Input('series-selector', 'value')  # 只监听系列切换
 )
-def populate_event_dropdown(_):
-    events_df = get_event_timeline_events()
+def populate_event_dropdown(series):
+    print(f"🔵 populate_event_dropdown 被调用, series={series}")
+    events_df = get_event_timeline_events(series)
     if events_df.empty:
         return []
     return [
-        {'label': row['slug'][:40] + '...' if len(row['slug']) > 40 else row['slug'], 'value': row['id']}
+        {'label': row['slug'].replace('elon-musk-of-tweets-', ''), 'value': row['id']}
         for _, row in events_df.iterrows()
     ]
 
@@ -453,6 +449,23 @@ def update_tweet_explorer(mode, event_id, start_date, end_date):
     import plotly.graph_objects as go
     today = datetime.now().date()
 
+    # ---- 如果是事件模式但未选择具体事件，不查询数据 ----
+    if mode == 'event' and not event_id:
+        empty_fig = go.Figure()
+        empty_fig.add_annotation(
+            text="请先选择一个事件",
+            showarrow=False,
+            font=dict(size=16, color='#6c757d')
+        )
+        empty_fig.update_layout(
+            height=300,
+            margin=dict(l=0, r=0, t=0, b=0),
+            xaxis=dict(visible=False),
+            yaxis=dict(visible=False)
+        )
+        return html.Div("请选择事件"), dcc.Graph(figure=empty_fig)
+
+    # ---- 确定时间范围 ----
     if mode == 'event' and event_id:
         ev_start, ev_end = get_event_time_range(event_id)
         if ev_start:
@@ -471,7 +484,10 @@ def update_tweet_explorer(mode, event_id, start_date, end_date):
         start_date = (today - timedelta(days=90)).isoformat()
         end_date = today.isoformat()
     elif mode == 'custom':
-        pass
+        if start_date:
+            start_date = start_date.strftime('%Y-%m-%d')
+        if end_date:
+            end_date = end_date.strftime('%Y-%m-%d')
     else:
         start_date = None
         end_date = None
@@ -494,7 +510,10 @@ def update_tweet_explorer(mode, event_id, start_date, end_date):
     hour_indices = [int(h) for h in pivot.index.tolist()]
     date_labels = [d for d in pivot.columns.tolist()]
 
-    # ---- 判断统计期 ----
+    row_avg = pivot.mean(axis=1).round(1)
+    col_total = pivot.sum(axis=0)
+
+    # ---- 判断统计期（用于筛选总推文） ----
     stat_start_dt = None
     stat_end_dt = None
     if mode == 'event' and event_id:
@@ -550,51 +569,6 @@ def update_tweet_explorer(mode, event_id, start_date, end_date):
         else:
             col_total_values.append(0)
     col_total = pd.Series(col_total_values, index=pivot.columns)
-
-    # ---- 计算行平均值（只统计活跃期内的数据） ----
-    row_avg_values = []
-    for i, hour_val in enumerate(hour_indices):
-        active_vals = []
-        for j, date_label in enumerate(date_labels):
-            if is_in_stat_period(date_label, f"{hour_val:02d}"):
-                active_vals.append(int(pivot.iloc[i, j]))
-        if active_vals:
-            row_avg_values.append(round(sum(active_vals) / len(active_vals), 1))
-        else:
-            row_avg_values.append(0)
-    row_avg = pd.Series(row_avg_values, index=pivot.index)
-    col_total = pivot.sum(axis=0)
-
-    # ---- 判断统计期（用于筛选总推文） ----
-    stat_start_dt = None
-    stat_end_dt = None
-    if mode == 'event' and event_id:
-        stat_start, stat_end = get_event_time_range(event_id)
-        if stat_start:
-            stat_start_dt = pd.to_datetime(stat_start)
-            stat_end_dt = pd.to_datetime(stat_end) - pd.Timedelta(hours=1)
-        else:
-            stat_start_dt = None
-            stat_end_dt = None
-    else:
-        stat_start_dt = None
-        stat_end_dt = None
-
-    def is_in_stat_period(date_str, hour_str):
-        if stat_start_dt is None or stat_end_dt is None:
-            return True
-        try:
-            dt = pd.to_datetime(date_str) + pd.Timedelta(hours=int(hour_str))
-            return stat_start_dt <= dt <= stat_end_dt
-        except:
-            return True
-
-    # 只统计活跃期内的推文总数
-    total_tweets = 0
-    for i, hour_val in enumerate(hour_indices):
-        for j, date_label in enumerate(date_labels):
-            if is_in_stat_period(date_label, f"{hour_val:02d}"):
-                total_tweets += int(pivot.iloc[i, j])
 
     # ---- 统计摘要卡 ----
     avg_per_hour = df['tweet_count'].mean()
@@ -706,7 +680,7 @@ def update_tweet_explorer(mode, event_id, start_date, end_date):
                 display_val = val
                 color = get_color(val, True)
             else:
-                display_val = ''  # 灰色区域显示为空
+                display_val = ''
                 color = '#e8e8e8'
             row.append({'value': display_val, 'color': color})
         row.append({'value': round(row_avg.iloc[i], 1), 'color': '#eaf2f8'})
