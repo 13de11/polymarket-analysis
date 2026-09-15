@@ -140,8 +140,12 @@ def layout():
                     ],
                     style={'marginBottom': '15px'}
                 ),
-                # ---- Tab 内容 ----
-                html.Div(id='backtest-tab-content', style={'minHeight': '400px'}),
+                # ---- Tab 内容（带 loading）----
+                dcc.Loading(
+                    id='loading-backtest',
+                    type='circle',
+                    children=[html.Div(id='backtest-tab-content', style={'minHeight': '400px'})]
+                ),
                 # ---- 隐藏存储 ----
                 dcc.Store(id='backtest-result-store', data={}),
                 dcc.Store(id='backtest-trades-store', data=[]),

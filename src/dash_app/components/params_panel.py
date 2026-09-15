@@ -92,7 +92,8 @@ def create_params_panel(default_event_id=None, series='7d'):
                         options=[
                             {'label': ' 7天', 'value': '7d'},
                             {'label': ' gamestart至今', 'value': 'gamestart'},
-                            {'label': ' 开盘至今', 'value': 'open'}
+                            {'label': ' 开盘至今', 'value': 'open'},
+                            {'label': ' 自定义', 'value': 'custom'}
                         ],
                         value='7d',
                         inline=True,
@@ -106,7 +107,11 @@ def create_params_panel(default_event_id=None, series='7d'):
                             style={'width': '60%', 'display': 'inline-block', 'marginTop': '4px'}
                         ),
                         html.Span(" 小时", style={'fontSize': '12px', 'color': '#7f8c8d', 'marginLeft': '4px'})
-                    ], style={'marginTop': '4px'}),
+                    ], id='backtest-window-custom-container', style={'marginTop': '4px', 'display': 'none'}),
+                    html.Div(
+                        "7天=最近168h滚动 | gamestart/开盘=从起点累计 | 自定义=最近N小时滚动",
+                        style={'fontSize': '11px', 'color': '#7f8c8d', 'marginTop': '4px', 'marginBottom': '4px'}
+                    ),
                 ], style={'marginBottom': '0px'}),
             ], style={'padding': '8px 0 4px 0'}),
         ], style={'marginBottom': '12px'}),
@@ -443,3 +448,13 @@ def register_params_callbacks(app):
             'backtest_range': backtest_range or 'full',
         }
         return params
+
+    # ===== 窗口模式切换：自定义输入框显示/隐藏 =====
+    @app.callback(
+        Output('backtest-window-custom-container', 'style'),
+        Input('backtest-window-type', 'value')
+    )
+    def toggle_custom_window(window_type):
+        if window_type == 'custom':
+            return {'marginTop': '4px'}
+        return {'marginTop': '4px', 'display': 'none'}
