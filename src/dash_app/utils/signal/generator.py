@@ -39,57 +39,79 @@ class DirectionSignalGenerator:
         self.median = params.get('median', 0.5)
         self.remaining_hours = params.get('remaining_hours', 0)
 
+        # 新增：窗口模式
+        self.window_mode = params.get('window_mode', 'rolling')
+        self.window_param = params.get('window_param', 168)
+        self.window_start = params.get('window_start', None)
+        self.window_start_ts = params.get('window_start_ts', None)  # ← expanding 起点时间戳（秒）
+
         # 状态变量
         self.prev_distance = None
         self.current_signal = '→'
         self.hold_hours = 0
         self.prev_total_estimate = None
+        self.prev_price = None  # ← 修复：显式初始化
 
-    def generate_signals(self, price_data: pd.DataFrame, tweet_data: pd.DataFrame,
-                         window_hours: int) -> pd.DataFrame:
+    def generate_signals(self, price_data: pd.DataFrame, tweet_data: pd.DataFrame) -> pd.DataFrame:
         """
         生成完整信号序列
 
         Args:
             price_data: DataFrame with columns [timestamp, price]
             tweet_data: DataFrame with columns [timestamp, tweet_count]
-            window_hours: 推文速率计算窗口（小时数）
 
         Returns:
-            DataFrame with columns [timestamp, price, tweet_count, signal,
-                                     distance, total_estimate, hold_hours]
+            DataFrame with columns [timestamp, price, tweet_count, signal, ...]
         """
-        # 合并价格和推文数据
         df = pd.merge(price_data, tweet_data, on='timestamp', how='left')
         df['tweet_count'] = df['tweet_count'].fillna(0)
+        df = df.sort_values('timestamp').reset_index(drop=True)
 
-        # 计算推文速率（滑动窗口）
-        df['avg_rate'] = df['tweet_count'].rolling(window=window_hours, min_periods=1).mean()
+        # ---- 计算 avg_rate ----
+        if self.window_mode == 'rolling':
+            n = int(self.window_param) if self.window_param else 168
+            df['avg_rate'] = df['tweet_count'].rolling(window=n, min_periods=1).mean()
 
-        # 计算估算总量
+        elif self.window_mode == 'expanding':
+            if self.window_start_ts is not None:
+                # 从指定时间戳开始 expanding
+                mask = df['timestamp'] >= pd.to_datetime(self.window_start_ts, unit='s')
+                df['avg_rate'] = np.nan
+                if mask.any():
+                    sub = df.loc[mask, 'tweet_count']
+                    df.loc[mask, 'avg_rate'] = sub.expanding(min_periods=1).mean().values
+                    # 起点之前用 rolling(1) 兜底（或用第一个值填充）
+                    if (~mask).any():
+                        df.loc[~mask, 'avg_rate'] = df.loc[~mask, 'tweet_count']
+                    # 前向填充：起点前的 NaN 用起点后的第一个值填
+                    df['avg_rate'] = df['avg_rate'].bfill()
+            else:
+                # 没有起点，从第一行开始 expanding
+                df['avg_rate'] = df['tweet_count'].expanding(min_periods=1).mean()
+        else:
+            # 兜底
+            df['avg_rate'] = df['tweet_count'].rolling(window=168, min_periods=1).mean()
+
+        # ---- 估算总量 ----
         df['total_estimate'] = df['avg_rate'] * self.remaining_hours
 
-        # 初始化信号列
+        # ---- 逐行遍历 ----
         signals = []
         distances = []
         estimates = []
         hold_hours_list = []
 
-        # 逐行遍历
         for idx, row in df.iterrows():
             total_estimate = row['total_estimate']
 
-            # ---- 动量修正 ----
+            # 动量修正
             if self.momentum_enable and self.prev_total_estimate is not None:
                 rate_change = self._calculate_momentum(df, idx)
                 adjustment = 1 + self.momentum_coef * rate_change
                 adjustment = np.clip(adjustment, 0.8, 1.2)
                 total_estimate = total_estimate * adjustment
 
-            # ---- 计算距离 ----
             distance = abs(total_estimate - self.median)
-
-            # ---- 方向判断 ----
             signal, hold_hours = self._determine_signal(distance, row['price'], idx)
 
             signals.append(signal)
@@ -97,7 +119,6 @@ class DirectionSignalGenerator:
             estimates.append(total_estimate)
             hold_hours_list.append(hold_hours)
 
-            # 更新状态
             self.prev_distance = distance
             self.prev_total_estimate = total_estimate
 
@@ -106,9 +127,7 @@ class DirectionSignalGenerator:
         df['total_estimate'] = estimates
         df['hold_hours'] = hold_hours_list
 
-        # ---- 信号后处理（首尾/只首/只尾） ----
         df = self._apply_signal_filter(df)
-
         return df
 
     def _calculate_momentum(self, df: pd.DataFrame, idx: int) -> float:
@@ -121,35 +140,31 @@ class DirectionSignalGenerator:
         return (df['avg_rate'].iloc[idx] - recent_avg) / recent_avg
 
     def _determine_signal(self, distance: float, price: float, idx: int) -> Tuple[str, int]:
-        """
-        确定当前信号
-        返回: (signal, hold_hours)
-        """
         # 容差过滤
         if distance <= self.capacity:
+            self.prev_price = price  # ← 也要更新
             return '→', 0
 
         # 首次判断
         if self.prev_distance is None:
             self.prev_distance = distance
+            self.prev_price = price  # ← 更新
             return '→', 0
 
-        # 噪声过滤：价格变动和距离变动都要满足才触发
-        price_change = abs(price - self.prev_price) if hasattr(self, 'prev_price') else 0
+        # 噪声过滤
+        price_change = abs(price - self.prev_price) if self.prev_price is not None else 0
         distance_change = distance - self.prev_distance
 
         if price_change <= self.price_threshold and abs(distance_change) <= self.distance_threshold:
-            # 噪音：不触发新信号，累加惯性
             self.hold_hours += 1
+            self.prev_price = price  # ← 修复：噪音分支也要更新 prev_price
             if self.hold_hours >= self.inertia_hours:
                 self.hold_hours = 0
                 return '→', self.hold_hours
             return self.current_signal, self.hold_hours
 
-        # 有效信号：重置惯性
+        # 有效信号
         self.hold_hours = 0
-
-        # 方向判断
         if distance < self.prev_distance:
             signal = '↑'
         elif distance > self.prev_distance:
@@ -159,7 +174,6 @@ class DirectionSignalGenerator:
 
         self.current_signal = signal
         self.prev_price = price
-
         return signal, self.hold_hours
 
     def _apply_signal_filter(self, df: pd.DataFrame) -> pd.DataFrame:

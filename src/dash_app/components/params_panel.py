@@ -405,20 +405,30 @@ def register_params_callbacks(app):
             return {}
 
         if window_type == '7d':
-            window_hours = 168
+            window_mode = 'rolling'
+            window_param = 168
+            window_start = None
         elif window_type == 'gamestart':
-            window_hours = 'gamestart'
+            window_mode = 'expanding'
+            window_param = None
+            window_start = 'gamestart'
         elif window_type == 'open':
-            window_hours = 'open'
-        else:
-            window_hours = int(window_custom) if window_custom else 168
+            window_mode = 'expanding'
+            window_param = None
+            window_start = 'open'
+        else:  # custom
+            window_mode = 'rolling'
+            window_param = int(window_custom) if window_custom else 168
+            window_start = None
 
         params = {
             'event_id': event_id,
             'market_id': market_id,
             'price_type': price_type or 'price_last',
             'window_type': window_type,
-            'window_hours': window_hours,
+            'window_mode': window_mode,  # ← 新增
+            'window_param': window_param,  # ← 新增
+            'window_start': window_start,  # ← 新增
             'capacity': capacity or 0,
             'price_threshold': price_threshold or 0.005,
             'distance_threshold': distance_threshold or 1.5,

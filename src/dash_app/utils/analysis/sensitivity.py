@@ -17,7 +17,8 @@ class SensitivityAnalysis:
         base_params: Dict[str, Any],
         param_name: str,
         param_values: List[float],
-        metric_key: str = 'total_return'
+        metric_key: str = 'total_return',
+        series: str = '7d'
     ) -> Dict[str, Any]:
         """
         运行参数敏感性分析
@@ -40,7 +41,7 @@ class SensitivityAnalysis:
             params = base_params.copy()
             params[param_name] = val
 
-            result = run_backtest(params)
+            result = run_backtest(params, series)
 
             if result and result.get('metrics'):
                 metrics = result['metrics']

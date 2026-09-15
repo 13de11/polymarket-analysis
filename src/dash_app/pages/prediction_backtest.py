@@ -271,7 +271,7 @@ def render_tab_content(tab_name, params, series, preview_clicks, run_clicks):  #
                 html.P("请配置参数并点击「运行回测」", style={'color': '#6c757d', 'textAlign': 'center'})
             ]), "请选择事件和市场，点击「运行回测」"
 
-        result = run_backtest(params)
+        result = run_backtest(params, series)
         if result is None:
             return html.Div([
                 html.P("❌ 回测运行失败，请检查参数",
@@ -483,7 +483,6 @@ def generate_signal_preview(params, series='7d'):  # ← 新增 series 参数（
     """生成信号预览图表和统计"""
     market_id = params.get('market_id')
     price_type = params.get('price_type', 'price_last')
-    window_hours = params.get('window_hours', 168)
     event_id = params.get('event_id')
 
     # 获取价格数据
@@ -523,6 +522,15 @@ def generate_signal_preview(params, series='7d'):  # ← 新增 series 参数（
     remaining_hours = get_event_remaining_hours(event_id)
 
     # 信号生成
+    # ---- 解析窗口参数 ----
+    window_mode = params.get('window_mode', 'rolling')
+    window_param = params.get('window_param', 168)
+    window_start = params.get('window_start', None)
+    window_start_ts = None
+    if window_mode == 'expanding' and window_start:
+        from src.dash_app.utils.data_loader import get_window_start_timestamp
+        window_start_ts = get_window_start_timestamp(event_id, window_start)
+
     signal_params = {
         'capacity': params.get('capacity', 0),
         'price_threshold': params.get('price_threshold', 0.005),
@@ -533,6 +541,10 @@ def generate_signal_preview(params, series='7d'):  # ← 新增 series 参数（
         'signal_mode': params.get('signal_mode', 'full'),
         'median': median,
         'remaining_hours': remaining_hours,
+        'window_mode': window_mode,
+        'window_param': window_param,
+        'window_start': window_start,
+        'window_start_ts': window_start_ts,
     }
 
     generator = DirectionSignalGenerator(signal_params)
@@ -543,7 +555,7 @@ def generate_signal_preview(params, series='7d'):  # ← 新增 series 参数（
     tweet_df_renamed = combined[['datetime_utc', 'tweet_count']].rename(
         columns={'datetime_utc': 'timestamp'}
     )
-    signal_df = generator.generate_signals(price_df_renamed, tweet_df_renamed, window_hours)
+    signal_df = generator.generate_signals(price_df_renamed, tweet_df_renamed)
 
     # 信号统计
     stats = generator.get_signal_stats(signal_df)
@@ -682,7 +694,6 @@ def run_backtest(params: dict, series='7d'):  # ← 新增 series 参数（暂�
     try:
         market_id = params.get('market_id')
         price_type = params.get('price_type', 'price_last')
-        window_hours = params.get('window_hours', 168)
         event_id = params.get('event_id')
 
         price_df = get_price_data_for_market(market_id)
@@ -716,6 +727,15 @@ def run_backtest(params: dict, series='7d'):  # ← 新增 series 参数（暂�
         median = get_market_median(market_id)
         remaining_hours = get_event_remaining_hours(event_id)
 
+        # ---- 解析窗口参数 ----
+        window_mode = params.get('window_mode', 'rolling')
+        window_param = params.get('window_param', 168)
+        window_start = params.get('window_start', None)
+        window_start_ts = None
+        if window_mode == 'expanding' and window_start:
+            from src.dash_app.utils.data_loader import get_window_start_timestamp
+            window_start_ts = get_window_start_timestamp(event_id, window_start)
+
         signal_params = {
             'capacity': params.get('capacity', 0),
             'price_threshold': params.get('price_threshold', 0.005),
@@ -723,9 +743,13 @@ def run_backtest(params: dict, series='7d'):  # ← 新增 series 参数（暂�
             'inertia_hours': params.get('inertia', 6),
             'momentum_enable': params.get('momentum_enable', True),
             'momentum_coef': params.get('momentum_coef', 0.10),
-            'signal_mode': 'full',
+            'signal_mode': params.get('signal_mode', 'full'),
             'median': median,
             'remaining_hours': remaining_hours,
+            'window_mode': window_mode,
+            'window_param': window_param,
+            'window_start': window_start,
+            'window_start_ts': window_start_ts,
         }
 
         generator = DirectionSignalGenerator(signal_params)
@@ -736,7 +760,7 @@ def run_backtest(params: dict, series='7d'):  # ← 新增 series 参数（暂�
         tweet_df_renamed = combined[['datetime_utc', 'tweet_count']].rename(
             columns={'datetime_utc': 'timestamp'}
         )
-        signal_df = generator.generate_signals(price_df_renamed, tweet_df_renamed, window_hours)
+        signal_df = generator.generate_signals(price_df_renamed, tweet_df_renamed)
 
         if signal_df.empty:
             return None
@@ -852,8 +876,9 @@ def create_comparison_table(results: Dict[str, Any]) -> html.Table:
     State('comparison-strategy-a', 'value'),
     State('comparison-strategy-b', 'value'),
     State('comparison-strategy-c', 'value'),
+    State('series-selector', 'value'),   # ← 新增
 )
-def run_comparison(n_clicks, params, strategy_a, strategy_b, strategy_c):
+def run_comparison(n_clicks, params, strategy_a, strategy_b, strategy_c, series):
     if n_clicks == 0:
         return html.Div()
 
@@ -903,8 +928,9 @@ def run_comparison(n_clicks, params, strategy_a, strategy_b, strategy_c):
     State('sensitivity-metric', 'value'),
     State('sensitivity-min', 'value'),
     State('sensitivity-max', 'value'),
+    State('series-selector', 'value'),   # ← 新增
 )
-def run_sensitivity_analysis(n_clicks, params, param_name, metric_key, min_val, max_val):
+def run_sensitivity_analysis(n_clicks, params, param_name, metric_key, min_val, max_val, series):
     if n_clicks == 0:
         return html.Div()
 
@@ -918,7 +944,7 @@ def run_sensitivity_analysis(n_clicks, params, param_name, metric_key, min_val, 
     # 运行分析
     from src.dash_app.utils.analysis.sensitivity import SensitivityAnalysis
     result = SensitivityAnalysis.run_sensitivity_analysis(
-        params, param_name, param_values, metric_key
+        params, param_name, param_values, metric_key, series
     )
 
     if not result or not result['results']:

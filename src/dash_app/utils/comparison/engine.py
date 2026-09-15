@@ -13,7 +13,7 @@ class ComparisonEngine:
     """多策略对比引擎"""
 
     @staticmethod
-    def run_comparison(base_params: Dict[str, Any], strategy_configs: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def run_comparison(base_params: Dict[str, Any], strategy_configs: List[Dict[str, Any]], series: str = '7d') -> Dict[str, Any]:
         """
         运行多策略对比
 
@@ -37,7 +37,7 @@ class ComparisonEngine:
             params['strategy_id'] = config.get('strategy_id', 'direction_signal')
 
             # 执行回测
-            result = ComparisonEngine._run_single_backtest(params)
+            result = ComparisonEngine._run_single_backtest(params, series)
             results[config['name']] = {
                 'name': config['name'],
                 'params': params,
@@ -50,11 +50,11 @@ class ComparisonEngine:
         return results
 
     @staticmethod
-    def _run_single_backtest(params: Dict[str, Any]) -> Dict[str, Any]:
+    def _run_single_backtest(params: Dict[str, Any], series: str = '7d') -> Dict[str, Any]:
         """执行单个回测"""
         try:
             from src.dash_app.pages.prediction_backtest import run_backtest
-            return run_backtest(params)
+            return run_backtest(params, series)
         except Exception as e:
             print(f"回测失败: {e}")
             return None

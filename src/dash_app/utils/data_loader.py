@@ -275,3 +275,18 @@ def get_event_start_timestamp(event_id: str) -> Optional[int]:
     if event.empty:
         return None
     return int(pd.to_datetime(event['start_date'].iloc[0]).timestamp())
+
+def get_window_start_timestamp(event_id: str, window_start: str) -> Optional[int]:
+    """
+    根据 window_start 类型，返回 expanding 窗口的起点时间戳（秒）
+    - 'gamestart': 事件统计开始时间（game_start_time）
+    - 'open': 事件开盘时间（start_date）
+    """
+    if window_start == 'gamestart':
+        ts = get_event_gamestart_label(event_id)
+        if ts:
+            return int(pd.to_datetime(ts, utc=True).timestamp())
+        return None
+    elif window_start == 'open':
+        return get_event_start_timestamp(event_id)
+    return None
