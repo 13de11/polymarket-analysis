@@ -68,6 +68,14 @@ def main():
 
     args = parser.parse_args()
 
+    # ---------- 前置检查 ----------
+    if not args.skip_tweets:
+        excel_path = PROJECT_ROOT / "data" / "tweet_hourly_wide.xlsx"
+        if not excel_path.exists():
+            print(f"❌ 推文宽表不存在: {excel_path}")
+            print("   请先准备 tweet_hourly_wide.xlsx，或加 --skip-tweets 跳过")
+            return
+
     print("=" * 70)
     print("📊 Musk 事件数据一键拉取")
     print(f"系列: {[c['slug'] for c in SERIES_CONFIG]}")
@@ -130,7 +138,8 @@ def main():
     # ---------- 4. 推文导入 ----------
     if not args.skip_tweets:
         if not run_script("import_tweets.py"):
-            print("⚠️ 推文导入失败，继续执行后续步骤")
+            print("❌ 推文导入失败，终止后续流程")
+            return
         time.sleep(2)
     else:
         print("⏭️ 跳过推文导入")

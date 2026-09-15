@@ -8,6 +8,7 @@
 
 import sqlite3
 import sys
+import shutil
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -16,6 +17,12 @@ from config import DB_PATH, LIGHT_DB_PATH
 # 源数据库连接
 src_conn = sqlite3.connect(str(DB_PATH))
 src_conn.row_factory = sqlite3.Row
+
+# 构建前：备份旧的精简库
+if LIGHT_DB_PATH.exists():
+    backup_path = LIGHT_DB_PATH.with_suffix(LIGHT_DB_PATH.suffix + '.bak')
+    shutil.copy2(LIGHT_DB_PATH, backup_path)
+    print(f"📦 已备份旧库: {backup_path}")
 
 # 目标数据库连接（新建）
 tgt_conn = sqlite3.connect(str(LIGHT_DB_PATH))
@@ -291,4 +298,29 @@ size_mb = LIGHT_DB_PATH.stat().st_size / 1024 / 1024
 print(f"\n📁 文件大小: {size_mb:.2f} MB")
 
 print(f"\n📂 数据库路径: {LIGHT_DB_PATH}")
+
+# ============================================================
+# 11. 数据校验
+# ============================================================
+print("\n" + "=" * 70)
+print("🔍 数据校验")
+print("=" * 70)
+
+errors = []
+if stats[0] < 1:
+    errors.append(f"  ❌ events 表为空")
+if stats[1] < 1:
+    errors.append(f"  ❌ markets 表为空")
+if stats[2] < 100:
+    errors.append(f"  ❌ price_hourly 记录过少: {stats[2]}")
+if stats[3] < 100:
+    errors.append(f"  ❌ tweet_hourly 记录过少: {stats[3]}")
+
+if errors:
+    print("\n".join(errors))
+    print("\n⚠️ 校验失败！旧库已备份为 .bak，请检查。")
+    sys.exit(1)
+else:
+    print("  ✅ events / markets / price_hourly / tweet_hourly 均正常")
+    print("✅ 校验通过")
 print("=" * 70)
