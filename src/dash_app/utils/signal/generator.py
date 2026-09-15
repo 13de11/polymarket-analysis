@@ -204,16 +204,19 @@ class DirectionSignalGenerator:
         return df_signal
 
     def get_signal_stats(self, df: pd.DataFrame) -> Dict:
-        """计算信号统计指标"""
+        """计算信号统计指标
+
+        注意：传入的 df 应该是 start 过滤后的（每个连续段只留起点），
+        避免连续同向信号重复计数。
+        """
         signals = df['signal']
         total_signals = len(signals[signals != ''])
         up_count = len(signals[signals == '↑'])
         down_count = len(signals[signals == '↓'])
         flat_count = len(signals[signals == '→'])
 
-        # 方向准确率（预测方向与下一小时价格变化的一致性）
-        price_change = df['price'].diff().shift(-1)
-        direction_accuracy = self._calculate_accuracy(df, price_change)
+        # 方向准确率（信号到下一个反向信号之间的价格变化）
+        direction_accuracy = self._calculate_accuracy(df)
 
         return {
             'total_signals': total_signals,
@@ -225,21 +228,49 @@ class DirectionSignalGenerator:
             'overall_accuracy': direction_accuracy['overall'],
         }
 
-    def _calculate_accuracy(self, df: pd.DataFrame, price_change: pd.Series) -> Dict:
-        """计算方向准确率"""
+    def _calculate_accuracy(self, df: pd.DataFrame) -> Dict:
+        """计算方向准确率
+
+        判定方式：信号发出后，持有到下一个反向信号出现（或事件结束），
+        看这段区间内价格是否朝着预测方向变化。
+        - ↑ 信号：区间末价格 > 区间初价格 → 正确
+        - ↓ 信号：区间末价格 < 区间初价格 → 正确
+        """
         up_correct = 0
         up_total = 0
         down_correct = 0
         down_total = 0
 
-        for idx, row in df.iterrows():
-            if row['signal'] == '↑':
+        signals = df['signal'].values
+        prices = df['price'].values
+        n = len(signals)
+
+        for i in range(n):
+            sig = signals[i]
+            if sig not in ('↑', '↓'):
+                continue
+
+            reverse = '↓' if sig == '↑' else '↑'
+            next_idx = None
+            for j in range(i + 1, n):
+                if signals[j] == reverse:
+                    next_idx = j
+                    break
+
+            end_idx = next_idx if next_idx is not None else n - 1
+            if end_idx <= i:
+                continue
+
+            entry_price = prices[i]
+            exit_price = prices[end_idx]
+
+            if sig == '↑':
                 up_total += 1
-                if price_change.iloc[idx] > 0:
+                if exit_price > entry_price:
                     up_correct += 1
-            elif row['signal'] == '↓':
+            elif sig == '↓':
                 down_total += 1
-                if price_change.iloc[idx] < 0:
+                if exit_price < entry_price:
                     down_correct += 1
 
         return {

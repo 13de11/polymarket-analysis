@@ -576,10 +576,11 @@ def generate_signal_preview(params, series='7d'):  # ← 新增 series 参数（
     )
     signal_df = generator.generate_signals(price_df_renamed, tweet_df_renamed)
 
-    # 信号统计
-    stats = generator.get_signal_stats(signal_df)
+    # 统计用的信号：start 模式过滤（每个连续段只算一次，避免重复计数）
+    stats_df = generator.apply_display_filter(signal_df, 'start')
+    stats = generator.get_signal_stats(stats_df)
 
-    # 仅用于显示的信号（受 signal_mode 影响）
+    # 显示用的信号（受用户选择的 signal_mode 影响）
     display_df = generator.apply_display_filter(signal_df, params.get('signal_mode', 'full'))
 
     # ---- 构建图表 ----
