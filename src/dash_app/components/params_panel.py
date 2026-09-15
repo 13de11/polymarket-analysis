@@ -62,6 +62,8 @@ def create_params_panel(default_event_id=None, series='7d'):
                         placeholder='请选择事件',
                         style={'width': '100%', 'marginTop': '3px'}
                     ),
+                    html.Div("要回测的历史事件（如 elon-musk-of-tweets-june-1-june-3）",
+                             style={'fontSize': '11px', 'color': '#7f8c8d', 'marginTop': '2px'}),
                 ], style={'marginBottom': '10px'}),
                 html.Div([
                     html.Label("目标市场:", style={'fontWeight': 'bold', 'fontSize': '13px'}),
@@ -71,6 +73,8 @@ def create_params_panel(default_event_id=None, series='7d'):
                         placeholder='请先选择事件',
                         style={'width': '100%', 'marginTop': '3px'}
                     ),
+                    html.Div("要回测的具体推文区间市场，决定中位数锚点",
+                             style={'fontSize': '11px', 'color': '#7f8c8d', 'marginTop': '2px'}),
                 ], style={'marginBottom': '10px'}),
                 html.Div([
                     html.Label("价格类型:", style={'fontWeight': 'bold', 'fontSize': '13px'}),
@@ -112,7 +116,11 @@ def create_params_panel(default_event_id=None, series='7d'):
                     ], id='backtest-window-custom-container', style={'marginTop': '4px', 'display': 'none'}),
                     html.Div(
                         "7天=最近168h滚动 | gamestart/开盘=从起点累计 | 自定义=最近N小时滚动",
-                        style={'fontSize': '11px', 'color': '#7f8c8d', 'marginTop': '4px', 'marginBottom': '4px'}
+                        style={'fontSize': '11px', 'color': '#7f8c8d', 'marginTop': '4px', 'marginBottom': '2px'}
+                    ),
+                    html.Div(
+                        "窗口决定「平均推文速率」的计算方式，进而影响估算总量和方向判断",
+                        style={'fontSize': '11px', 'color': '#95a5a6', 'marginBottom': '4px'}
                     ),
                 ], style={'marginBottom': '0px'}),
             ], style={'padding': '8px 0 4px 0'}),
@@ -257,6 +265,8 @@ def create_params_panel(default_event_id=None, series='7d'):
                             min=1,
                             style={'width': '100%', 'padding': '4px', 'fontSize': '12px'}
                         ),
+                        html.Div("回测起始资金（美元）",
+                                 style={'fontSize': '11px', 'color': '#7f8c8d', 'marginTop': '2px'}),
                     ], style={'display': 'inline-block', 'width': '45%', 'paddingRight': '5%'}),
                     html.Div([
                         html.Label("开仓模式:", style={'fontSize': '12px'}),
@@ -285,6 +295,8 @@ def create_params_panel(default_event_id=None, series='7d'):
                             min=0.1,
                             style={'width': '100%', 'padding': '4px', 'fontSize': '12px'}
                         ),
+                        html.Div("固定金额模式下=美元数；固定份额模式下=份数",
+                                 style={'fontSize': '11px', 'color': '#7f8c8d', 'marginTop': '2px'}),
                     ], style={'display': 'inline-block', 'width': '45%', 'paddingRight': '5%'}),
                     html.Div([
                         html.Label("回测区间:", style={'fontSize': '12px'}),

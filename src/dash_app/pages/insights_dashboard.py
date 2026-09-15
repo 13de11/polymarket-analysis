@@ -245,7 +245,17 @@ def layout():
 
             # 表格容器
             html.Div(id='tweet-explorer-table', style={'overflowX': 'auto', 'marginTop': '10px'}),
-
+            # 说明
+            html.Div([
+                html.Strong("📖 如何阅读："),
+                html.Span(
+                    "表格横轴为日期，纵轴为 UTC 小时，单元格颜色深浅表示该时段推文数。Total 行 = 该日期全天推文总数；Avg 列 = 该小时在所有日期中的平均推文数。仅活跃期（事件时间范围内）的数据会着色统计，其余显示为灰色。",
+                    style={'color': '#495057', 'fontSize': '12px'}),
+                html.Br(),
+                html.Strong("💡 统计意义："),
+                html.Span("可以快速识别推文高峰时段和日期分布，辅助判断事件的推文密度规律。",
+                          style={'color': '#495057', 'fontSize': '12px'})
+            ], style={'padding': '8px 12px', 'backgroundColor': '#f1f3f5', 'borderRadius': '4px', 'marginTop': '10px'}),
         ], style={'marginBottom': 20}),
 
         dcc.Store(id='insights-store', data={}),

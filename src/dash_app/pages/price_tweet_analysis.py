@@ -138,6 +138,35 @@ def layout():
             ]
         ),
 
+        # ========== 图表说明 ==========
+        html.Div([
+            html.Strong("📖 图表说明：", style={'fontSize': '13px'}),
+            html.Ul([
+                html.Li([
+                    html.Strong("价格（左轴）"),
+                    html.Span("：市场对该区间「最终达成」的概率（0~1）")
+                ]),
+                html.Li([
+                    html.Strong("每小时推文数（右轴，柱状）"),
+                    html.Span("：该小时的推文总量")
+                ]),
+                html.Li([
+                    html.Strong("累计推文（第二右轴，虚线）"),
+                    html.Span("：从事件开始到当前的总推文数")
+                ]),
+                html.Li([
+                    html.Strong("⭐ 命中市场"),
+                    html.Span("：最后一个价格 > 0.99 的市场（即该区间最终「达成」），红色线高亮")
+                ]),
+            ], style={'margin': '6px 0', 'paddingLeft': '20px', 'fontSize': '12px', 'color': '#495057'})
+        ], style={
+            'padding': '10px 15px',
+            'backgroundColor': '#f1f3f5',
+            'borderRadius': '6px',
+            'marginTop': '10px',
+            'marginBottom': '10px'
+        }),
+
         # ========== 底部统计信息 ==========
         html.Div(id='stats-info', style={
             'marginTop': 12,
