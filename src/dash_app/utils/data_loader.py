@@ -1,9 +1,13 @@
 """
 数据加载层 - 从 elon_tweets_analysis.db 读取数据
 """
+"""
+数据加载层 - 从 elon_tweets_analysis.db 读取数据
+"""
 import sqlite3
 import os
 import sys
+import threading
 import pandas as pd
 from pathlib import Path
 from typing import Optional
@@ -17,6 +21,22 @@ from config import LIGHT_DB_PATH
 
 # 优先用环境变量（PythonAnywhere 用），否则用 config 的路径
 DB_PATH = os.getenv("DATABASE_PATH", str(LIGHT_DB_PATH))
+
+# ---- 连接管理（WAL + 连接复用） ----
+_local = threading.local()
+
+
+def get_connection() -> sqlite3.Connection:
+    """获取当前线程的连接（复用）"""
+    conn = getattr(_local, 'conn', None)
+    if conn is None:
+        conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+        # 启用 WAL 模式（读写不互相阻塞）
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("PRAGMA temp_store=MEMORY")
+        _local.conn = conn
+    return conn
 
 # ========== 系列过滤工具 ==========
 
@@ -43,23 +63,23 @@ def get_series_condition(series: str = '7d', table_alias: str = 'e') -> str:
            f"{table_alias}.slug LIKE 'elon-musk-of-tweets%'"
 
 def run_query(query: str, params=()) -> pd.DataFrame:
-    """执行 SQL 查询并返回 DataFrame"""
-    conn = sqlite3.connect(DB_PATH)
-    try:
-        df = pd.read_sql_query(query, conn, params=params)
-    finally:
-        conn.close()
+    """执行 SQL 查询并返回 DataFrame（复用连接）"""
+    conn = get_connection()
+    df = pd.read_sql_query(query, conn, params=params)
     return df
 
 
-def get_elon_tweet_events(series: str = '7d'):
-    """获取已结束的 elon-tweets 系列事件（支持系列过滤）"""
+from functools import lru_cache
+
+
+@lru_cache(maxsize=8)
+def _get_elon_tweet_events_cached(series: str, cache_key: str):
+    """内部：带缓存的查询。cache_key 用于失效"""
     from datetime import datetime, timezone
     import re
 
     now_utc = datetime.now(timezone.utc).isoformat()
 
-    # 先获取所有事件
     query = """
         SELECT id, slug, game_start_time, start_date, end_date
         FROM events
@@ -100,6 +120,17 @@ def get_elon_tweet_events(series: str = '7d'):
 
     return df
 
+
+def get_elon_tweet_events(series: str = '7d'):
+    """获取已结束的 elon-tweets 系列事件（带缓存）
+
+    缓存 key 包含日期（每天自动失效一次），避免数据更新后不刷新。
+    """
+    from datetime import date
+    cache_key = date.today().isoformat()
+    cached = _get_elon_tweet_events_cached(series, cache_key)
+    # 返回副本，避免调用方修改缓存
+    return cached.copy()
 
 def get_markets_by_event(event_id: str):
     """获取指定事件下所有有价格数据的市场，按推文区间排序"""

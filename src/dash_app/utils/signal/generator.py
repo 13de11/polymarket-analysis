@@ -83,8 +83,6 @@ class DirectionSignalGenerator:
                     # 起点之前用 rolling(1) 兜底（或用第一个值填充）
                     if (~mask).any():
                         df.loc[~mask, 'avg_rate'] = df.loc[~mask, 'tweet_count']
-                    # 前向填充：起点前的 NaN 用起点后的第一个值填
-                    df['avg_rate'] = df['avg_rate'].bfill()
             else:
                 # 没有起点，从第一行开始 expanding
                 df['avg_rate'] = df['tweet_count'].expanding(min_periods=1).mean()
@@ -130,7 +128,10 @@ class DirectionSignalGenerator:
         return df
 
     def _calculate_momentum(self, df: pd.DataFrame, idx: int) -> float:
-        """计算动量修正系数"""
+        """计算动量修正系数
+
+        注意：idx 假定是位置索引（0..n-1），依赖 generate_signals 里的 reset_index
+        """
         if idx < 6:  # 前6小时无足够数据
             return 0.0
         recent_avg = df['avg_rate'].iloc[idx-6:idx].mean()

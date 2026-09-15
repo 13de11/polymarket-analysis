@@ -417,6 +417,34 @@ def register_params_callbacks(app):
         default_value = target['id'] if target else None
         return options, default_value
 
+    # ===== 系列切换：更新事件列表 =====
+    @app.callback(
+        Output('backtest-event-selector', 'options'),
+        Output('backtest-event-selector', 'value'),
+        Input('series-selector', 'value'),
+        prevent_initial_call=True,
+    )
+    def update_backtest_events_on_series_change(series):
+        """当系列切换时，重新生成事件列表"""
+        events_df = get_elon_tweet_events(series)
+        if events_df.empty:
+            return [], None
+
+        event_options = []
+        for _, row in events_df.iterrows():
+            target = get_target_market(row['id'])
+            if target:
+                r_start = int(target['range_start'])
+                r_end = int(target['range_end']) if target['range_end'] and not pd.isna(target['range_end']) else '∞'
+                label = f"{row['slug']} (命中: {r_start}-{r_end})"
+            else:
+                label = row['slug']
+            event_options.append({'label': label, 'value': row['id']})
+
+        # 默认选最后一个
+        default_event = events_df.iloc[-1]['id'] if not events_df.empty else None
+        return event_options, default_event
+
     # ===== 保存参数 =====
     @app.callback(
         Output('backtest-params-store', 'data'),

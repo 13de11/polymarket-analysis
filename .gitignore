@@ -2,6 +2,8 @@
 # 大数据库（不上传）
 data/polymarket_data.db
 data/*.db
+data/*.db-wal
+data/*.db-shm
 
 # ===== 大 Excel（数据导入中间产物，Web 运行不需要）=====
 data/tweet_counts_long.xlsx

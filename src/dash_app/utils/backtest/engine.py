@@ -36,7 +36,6 @@ class BacktestEngine:
         # 状态变量
         self.cash = initial_capital
         self.position = 0  # 当前持仓数量（股/份）
-        self.position_cost = 0  # 持仓成本（平均成本）
         self.trades = []  # 交易记录
         self.equity_curve = []  # 权益曲线
         self.is_holding = False
@@ -109,7 +108,6 @@ class BacktestEngine:
         """重置回测状态"""
         self.cash = self.initial_capital
         self.position = 0
-        self.position_cost = 0
         self.trades = []
         self.equity_curve = []
         self.is_holding = False
@@ -157,7 +155,6 @@ class BacktestEngine:
         # 执行买入
         self.cash -= amount
         self.position += shares
-        self.position_cost = price  # 简化：使用当前价格作为成本
         self.is_holding = True
         self.entry_price = price
         self.entry_time = timestamp
@@ -202,14 +199,21 @@ class BacktestEngine:
         open_trade['exit_price'] = price
         open_trade['profit'] = profit
         open_trade['profit_pct'] = profit_pct
-        open_trade['hold_hours'] = (timestamp - self.entry_time).total_seconds() / 3600 if self.entry_time else 0
+        try:
+            if self.entry_time is not None:
+                entry_ts = pd.Timestamp(self.entry_time)
+                exit_ts = pd.Timestamp(timestamp)
+                open_trade['hold_hours'] = (exit_ts - entry_ts).total_seconds() / 3600
+            else:
+                open_trade['hold_hours'] = 0
+        except Exception:
+            open_trade['hold_hours'] = 0
         open_trade['result'] = '盈利' if profit > 0 else '亏损' if profit < 0 else '平盘'
         open_trade['reason'] = reason
 
         # 执行卖出
         self.cash += self.position * price
         self.position = 0
-        self.position_cost = 0
         self.is_holding = False
         self.entry_price = 0
         self.entry_time = None
