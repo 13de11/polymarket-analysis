@@ -9,7 +9,6 @@ from dash import Dash, html, dcc, callback, Input, Output
 app = Dash(__name__, suppress_callback_exceptions=True)
 server = app.server
 
-print("🔥🔥🔥 app_new.py 被加载了！🔥🔥🔥")
 
 from src.dash_app.pages import price_tweet_analysis
 from src.dash_app.pages import home
@@ -88,7 +87,6 @@ app.layout = html.Div([
     Input('series-selector', 'value')
 )
 def update_series_label(series):
-    print(f"✅✅✅ 系列切换成功！值: {series} ✅✅✅")
     labels = {'7d': '当前显示: 7天推文事件', '48h': '当前显示: 48小时推文事件'}
     return labels.get(series, '当前显示: 7天推文事件')
 
@@ -97,7 +95,6 @@ def update_series_label(series):
     Input('url', 'pathname')
 )
 def display_page(pathname):
-    print(f"📄 渲染页面: {pathname}")
     if pathname == '/analysis':
         return price_tweet_analysis.layout()
     elif pathname == '/insights':

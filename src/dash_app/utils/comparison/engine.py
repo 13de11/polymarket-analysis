@@ -5,8 +5,7 @@
 
 import pandas as pd
 from typing import Dict, List, Any
-from src.dash_app.utils.backtest.engine import BacktestEngine
-from src.dash_app.utils.metrics.calculator import calculate_metrics_from_trades
+from src.dash_app.utils.backtest.runner import run_backtest
 
 
 class ComparisonEngine:
@@ -53,7 +52,6 @@ class ComparisonEngine:
     def _run_single_backtest(params: Dict[str, Any], series: str = '7d') -> Dict[str, Any]:
         """执行单个回测"""
         try:
-            from src.dash_app.pages.prediction_backtest import run_backtest
             return run_backtest(params, series)
         except Exception as e:
             print(f"回测失败: {e}")

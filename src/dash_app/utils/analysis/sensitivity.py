@@ -4,9 +4,8 @@
 """
 
 import pandas as pd
-import numpy as np
 from typing import Dict, Any, List, Callable
-from src.dash_app.pages.prediction_backtest import run_backtest
+from src.dash_app.utils.backtest.runner import run_backtest
 
 
 class SensitivityAnalysis:
@@ -36,7 +35,6 @@ class SensitivityAnalysis:
         total = len(param_values)
 
         for i, val in enumerate(param_values):
-            print(f"  运行 {i+1}/{total}: {param_name} = {val}")
 
             params = base_params.copy()
             params[param_name] = val

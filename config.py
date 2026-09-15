@@ -13,7 +13,7 @@ DATA_DIR = PROJECT_ROOT / "data"
 SCRIPTS_DIR = PROJECT_ROOT / "scripts"
 SRC_DIR = PROJECT_ROOT / "src"
 DASH_APP_DIR = SRC_DIR / "dash_app"
-LEGACY_DIR = PROJECT_ROOT / "legacy_plotly"
+LEGACY_DIR = PROJECT_ROOT / "archives" / "legacy_plotly"
 
 # 数据库路径
 DB_PATH = DATA_DIR / "polymarket_data.db"

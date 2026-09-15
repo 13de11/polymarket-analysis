@@ -413,7 +413,6 @@ def update_insights(time_range, series):
     Input('series-selector', 'value')  # 只监听系列切换
 )
 def populate_event_dropdown(series):
-    print(f"🔵 populate_event_dropdown 被调用, series={series}")
     events_df = get_event_timeline_events(series)
     if events_df.empty:
         return []

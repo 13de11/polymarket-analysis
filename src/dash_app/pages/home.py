@@ -2,6 +2,7 @@
 首页 - 项目概览
 """
 from dash import html
+from datetime import datetime
 
 def layout():
     return html.Div([
@@ -24,6 +25,6 @@ def layout():
         html.Div([
             html.P("📊 数据库状态: 已连接", style={'color': '#28a745'}),
             html.P("📂 数据来源: Polymarket + Twitter", style={'color': '#6c757d'}),
-            html.P(f"🕐 最后更新: 2026-08-20", style={'color': '#6c757d'}),
+            html.P(f"🕐 最后更新: {datetime.now().strftime('%Y-%m-%d')}", style={'color': '#6c757d'}),
         ], style={'fontSize': '14px'})
     ])

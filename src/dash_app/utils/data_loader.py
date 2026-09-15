@@ -2,13 +2,21 @@
 数据加载层 - 从 elon_tweets_analysis.db 读取数据
 """
 import sqlite3
-import pandas as pd
+import os
 import sys
+import pandas as pd
 from pathlib import Path
 from typing import Optional
 
+# 项目根路径加入 sys.path，用于 import config
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
-DB_PATH = str(PROJECT_ROOT / "data" / "elon_tweets_analysis.db")
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from config import LIGHT_DB_PATH
+
+# 优先用环境变量（PythonAnywhere 用），否则用 config 的路径
+DB_PATH = os.getenv("DATABASE_PATH", str(LIGHT_DB_PATH))
 
 # ========== 系列过滤工具 ==========
 

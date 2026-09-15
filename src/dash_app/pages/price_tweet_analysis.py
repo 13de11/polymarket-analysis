@@ -163,9 +163,7 @@ def layout():
     Input('series-selector', 'value')
 )
 def update_events(series):
-    print(f"=== update_events 被调用, series={series} ===")
     events_df = get_elon_tweet_events(series)
-    print(f"事件数: {len(events_df)}")
 
     if events_df.empty:
         return [], None

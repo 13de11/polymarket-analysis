@@ -180,8 +180,8 @@ def get_tweet_heatmap() -> pd.DataFrame:
     return df
 
 
-def get_correlation_data() -> pd.DataFrame:
-    """获取价格与推文的相关性数据"""
+def get_correlation_data(limit: int = 10000) -> pd.DataFrame:
+    """获取价格与推文的相关性数据（时间倒序采样，避免全表随机排序）"""
     query = """
         SELECT 
             p.price_last,
@@ -191,10 +191,10 @@ def get_correlation_data() -> pd.DataFrame:
         JOIN tweet_hourly t ON p.hour_start_utc = t.timestamp_unix_utc
         WHERE p.price_last IS NOT NULL 
           AND t.tweet_count IS NOT NULL
-        ORDER BY RANDOM()
-        LIMIT 10000
+        ORDER BY p.hour_start_utc DESC
+        LIMIT ?
     """
-    df = run_query(query)
+    df = run_query(query, (limit,))
     return df
 
 
@@ -249,29 +249,26 @@ def get_event_timeline_events(series: str = '7d') -> pd.DataFrame:
 
 
 def get_ma_values() -> dict:
-    """获取 24小时、7天、14天的推文平均值"""
+    """获取 24小时、7天、14天的推文平均值（单次查询）"""
     now_ts = int(datetime.now().timestamp())
     day_seconds = 86400
 
-    query_24h = f"""
-        SELECT AVG(tweet_count) as avg_24h
+    # 用 CASE WHEN 一次算出三个值
+    query = f"""
+        SELECT 
+            AVG(CASE WHEN timestamp_unix_utc >= {now_ts - day_seconds} THEN tweet_count END) as avg_24h,
+            AVG(CASE WHEN timestamp_unix_utc >= {now_ts - 7 * day_seconds} THEN tweet_count END) as avg_7d,
+            AVG(CASE WHEN timestamp_unix_utc >= {now_ts - 14 * day_seconds} THEN tweet_count END) as avg_14d
         FROM tweet_hourly
-        WHERE timestamp_unix_utc >= {now_ts - day_seconds}
     """
-    query_7d = f"""
-        SELECT AVG(tweet_count) as avg_7d
-        FROM tweet_hourly
-        WHERE timestamp_unix_utc >= {now_ts - 7 * day_seconds}
-    """
-    query_14d = f"""
-        SELECT AVG(tweet_count) as avg_14d
-        FROM tweet_hourly
-        WHERE timestamp_unix_utc >= {now_ts - 14 * day_seconds}
-    """
+    df = run_query(query)
 
-    avg_24h = run_query(query_24h)['avg_24h'].iloc[0] if not run_query(query_24h).empty else 0
-    avg_7d = run_query(query_7d)['avg_7d'].iloc[0] if not run_query(query_7d).empty else 0
-    avg_14d = run_query(query_14d)['avg_14d'].iloc[0] if not run_query(query_14d).empty else 0
+    if df.empty:
+        return {'ma_24h': 0, 'ma_7d': 0, 'ma_14d': 0}
+
+    avg_24h = df['avg_24h'].iloc[0]
+    avg_7d = df['avg_7d'].iloc[0]
+    avg_14d = df['avg_14d'].iloc[0]
 
     return {
         'ma_24h': round(avg_24h, 1) if avg_24h else 0,

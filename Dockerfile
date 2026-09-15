@@ -7,6 +7,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-EXPOSE 7860
+EXPOSE 8050
 
-CMD ["python", "src/dash_app/app.py"]
+CMD ["python", "app_new.py"]
