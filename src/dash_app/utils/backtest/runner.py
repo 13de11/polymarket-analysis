@@ -48,6 +48,14 @@ def run_backtest(params: dict, series='7d'):
                     combined = combined[combined['hour_start_utc'] >= gamestart_ts]
                 if combined.empty:
                     return None
+        elif backtest_range == 'custom':
+            pct = params.get('backtest_range_custom', [0, 100])
+            total_len = len(combined)
+            start_idx = int(total_len * pct[0] / 100)
+            end_idx = int(total_len * pct[1] / 100)
+            if end_idx <= start_idx:
+                return None
+            combined = combined.iloc[start_idx:end_idx].reset_index(drop=True)
         # ===== 区间过滤结束 =====
 
         if len(combined) < 10:

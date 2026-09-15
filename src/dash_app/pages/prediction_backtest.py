@@ -35,79 +35,6 @@ def layout():
                    style={'color': '#6c757d', 'fontSize': '14px', 'marginTop': 0}),
         ], style={'marginBottom': 15}),
 
-        # ========== 参数说明（可折叠） ==========
-        html.Details([
-            html.Summary("📖 参数说明（点击展开）", style={
-                'cursor': 'pointer',
-                'fontWeight': 'bold',
-                'padding': '8px 12px',
-                'backgroundColor': '#f8f9fa',
-                'borderRadius': '6px',
-                'border': '1px solid #e9ecef'
-            }),
-            html.Div([
-                html.Div([
-                    html.H5("📊 数据选择", style={'margin': '10px 0 5px 0'}),
-                    html.Table([
-                        html.Tr([html.Th("参数", style={'textAlign': 'left', 'padding': '4px 12px'}),
-                                 html.Th("含义", style={'textAlign': 'left', 'padding': '4px 12px'})]),
-                        html.Tr([html.Td("事件", style={'padding': '4px 12px'}),
-                                 html.Td("选择要分析的具体预测事件", style={'padding': '4px 12px'})]),
-                        html.Tr([html.Td("目标市场", style={'padding': '4px 12px'}),
-                                 html.Td("选择特定的推文区间市场，决定中位数锚点", style={'padding': '4px 12px'})]),
-                        html.Tr([html.Td("价格类型", style={'padding': '4px 12px'}),
-                                 html.Td("last=最新价，avg=均价，用于价格曲线和ΔP计算", style={'padding': '4px 12px'})]),
-                        html.Tr([html.Td("推文速率窗口", style={'padding': '4px 12px'}),
-                                 html.Td("计算平均推文速率时回溯的小时数", style={'padding': '4px 12px'})]),
-                    ], style={'borderCollapse': 'collapse', 'width': '100%'}),
-                ]),
-                html.Div([
-                    html.H5("🧠 策略参数", style={'margin': '10px 0 5px 0'}),
-                    html.Table([
-                        html.Tr([html.Th("参数", style={'textAlign': 'left', 'padding': '4px 12px'}),
-                                 html.Th("含义", style={'textAlign': 'left', 'padding': '4px 12px'}),
-                                 html.Th("计算逻辑", style={'textAlign': 'left', 'padding': '4px 12px'})]),
-                        html.Tr([html.Td("容差", style={'padding': '4px 12px'}),
-                                 html.Td("判断'看平'的距离阈值", style={'padding': '4px 12px'}),
-                                 html.Td("distCur ≤ 容差 → →（看平）", style={'padding': '4px 12px'})]),
-                        html.Tr([html.Td("价格变动阈值", style={'padding': '4px 12px'}),
-                                 html.Td("价格噪音过滤", style={'padding': '4px 12px'}),
-                                 html.Td("ΔP ≤ 阈值 → 不触发新信号", style={'padding': '4px 12px'})]),
-                        html.Tr([html.Td("距离变动阈值", style={'padding': '4px 12px'}),
-                                 html.Td("距离噪音过滤", style={'padding': '4px 12px'}),
-                                 html.Td("ΔD ≤ 阈值 → 不触发新信号", style={'padding': '4px 12px'})]),
-                        html.Tr([html.Td("惯性重置", style={'padding': '4px 12px'}),
-                                 html.Td("信号漂移保护", style={'padding': '4px 12px'}),
-                                 html.Td("连续无有效信号 ≥ 惯性小时 → 强制输出 →", style={'padding': '4px 12px'})]),
-                        html.Tr([html.Td("动量修正", style={'padding': '4px 12px'}),
-                                 html.Td("推文速率变化的自适应调整", style={'padding': '4px 12px'}),
-                                 html.Td("调整系数 = 1 + 系数 × rateChange，限制 0.8~1.2", style={'padding': '4px 12px'})]),
-                    ], style={'borderCollapse': 'collapse', 'width': '100%'}),
-                ]),
-                html.Div([
-                    html.H5("🎨 信号展示", style={'margin': '10px 0 5px 0'}),
-                    html.Table([
-                        html.Tr([html.Th("参数", style={'textAlign': 'left', 'padding': '4px 12px'}),
-                                 html.Th("含义", style={'textAlign': 'left', 'padding': '4px 12px'})]),
-                        html.Tr([html.Td("信号模式", style={'padding': '4px 12px'}),
-                                 html.Td("首尾/只首/只尾，仅影响图表显示密度", style={'padding': '4px 12px'})]),
-                        html.Tr([html.Td("信号确认次数", style={'padding': '4px 12px'}),
-                                 html.Td("信号需连续出现 N 次才生效，减少假信号", style={'padding': '4px 12px'})]),
-                    ], style={'borderCollapse': 'collapse', 'width': '100%'}),
-                ]),
-                html.Div([
-                    html.H5("📈 方向判断逻辑", style={'margin': '10px 0 5px 0'}),
-                    html.Ul([
-                        html.Li("① 距离计算：distance = |估算总量 - 中位数|"),
-                        html.Li("② 容差过滤：distance ≤ 容差 → →（看平）"),
-                        html.Li("③ 方向判断：distance < prevDistance → ↑（看涨），> → ↓（看跌）"),
-                        html.Li("④ 噪声过滤：ΔP ≤ 价格阈值 且 ΔD ≤ 距离阈值 → 不触发新信号"),
-                        html.Li("⑤ 惯性重置：连续无有效信号 ≥ 惯性小时 → 强制输出 →"),
-                    ], style={'margin': '4px 0'})
-                ]),
-            ], style={'padding': '10px 15px', 'backgroundColor': '#f8f9fa', 'borderRadius': '6px'}),
-        ], style={'marginBottom': '15px'}),
-
         # ========== 主布局：左侧参数 + 右侧结果 ==========
         html.Div([
             # ---- 左侧：参数面板 ----
@@ -158,19 +85,101 @@ def layout():
             }),
         ], style={'display': 'flex', 'flexWrap': 'wrap'}),
 
-        # ========== 底部：回测规则说明 ==========
+        # ========== 底部：方向判断与回测规则详解 ==========
         html.Details([
-            html.Summary("📖 回测规则说明", style={'cursor': 'pointer', 'fontWeight': 'bold', 'padding': '10px 0'}),
+            html.Summary("📖 方向判断与回测规则详解", style={'cursor': 'pointer', 'fontWeight': 'bold', 'padding': '10px 0'}),
             html.Div([
+                # ---- 方向判断逻辑 ----
+                html.H5("🎯 方向判断逻辑", style={'marginTop': '5px', 'color': '#2c3e50'}),
+                html.Ol([
+                    html.Li([
+                        html.Strong("估算总量 = 平均推文速率 × 剩余小时数"),
+                        html.Br(),
+                        html.Span(
+                            "平均推文速率由「推文速率窗口」决定：\n"
+                            "• 7天 = 最近 168 小时的滚动平均\n"
+                            "• gamestart至今 = 从事件统计起点到当前的累计平均\n"
+                            "• 开盘至今 = 从事件开盘到当前的累计平均\n"
+                            "• 自定义 = 最近 N 小时的滚动平均",
+                            style={'fontSize': '13px', 'color': '#495057'}
+                        )
+                    ], style={'marginBottom': '8px'}),
+                    html.Li([
+                        html.Strong("距离 = |估算总量 − 市场中位数|"),
+                        html.Br(),
+                        html.Span(
+                            "中位数 =（区间下界 + 区间上界）/ 2。例如市场 180-199，中位数 = 189.5",
+                            style={'fontSize': '13px', 'color': '#495057'}
+                        )
+                    ], style={'marginBottom': '8px'}),
+                    html.Li([
+                        html.Strong("容差过滤：距离 ≤ 容差 → 直接判定为「看平」（→）"),
+                        html.Br(),
+                        html.Span(
+                            "容差越大，看平信号越多",
+                            style={'fontSize': '13px', 'color': '#495057'}
+                        )
+                    ], style={'marginBottom': '8px'}),
+                    html.Li([
+                        html.Strong("噪音过滤：距离变动 ≤ 距离阈值 且 价格变动 ≤ 价格阈值 → 不触发新信号"),
+                        html.Br(),
+                        html.Span(
+                            "两个条件同时满足才算噪音。任一超过阈值 → 触发下一步方向判断",
+                            style={'fontSize': '13px', 'color': '#495057'}
+                        )
+                    ], style={'marginBottom': '8px'}),
+                    html.Li([
+                        html.Strong("方向判断：当前距离 vs 上一时刻距离"),
+                        html.Br(),
+                        html.Span(
+                            "距离变小 → ↑（看涨）；距离变大 → ↓（看跌）；距离不变 → →（看平）",
+                            style={'fontSize': '13px', 'color': '#495057'}
+                        )
+                    ], style={'marginBottom': '8px'}),
+                ], style={'marginLeft': '0', 'paddingLeft': '20px'}),
+
+                # ---- 惯性保护 ----
+                html.H5("🛡️ 惯性保护", style={'marginTop': '15px', 'color': '#2c3e50'}),
+                html.P(
+                    "连续 ≥ 惯性小时 无有效信号 → 强制输出 →（看平），避免长期持有单一方向。",
+                    style={'fontSize': '13px', 'color': '#495057', 'marginLeft': '20px'}
+                ),
+
+                # ---- 动量修正 ----
+                html.H5("⚡ 动量修正", style={'marginTop': '15px', 'color': '#2c3e50'}),
+                html.P(
+                    "根据最近 6 小时的推文速率变化调整估算总量。调整系数 = 1 + 动量系数 × rateChange，限制在 0.8~1.2 倍。",
+                    style={'fontSize': '13px', 'color': '#495057', 'marginLeft': '20px'}
+                ),
+
+                # ---- 信号模式 ----
+                html.H5("🎨 信号模式", style={'marginTop': '15px', 'color': '#2c3e50'}),
+                html.P(
+                    "只影响图表上箭头的显示密度，不影响回测交易。\n"
+                    "• full：首尾都显示\n"
+                    "• start：只显示每个连续段的起点\n"
+                    "• end：只显示每个连续段的终点",
+                    style={'fontSize': '13px', 'color': '#495057', 'marginLeft': '20px', 'whiteSpace': 'pre-line'}
+                ),
+
+                # ---- 回测规则 ----
+                html.H5("💰 回测规则", style={'marginTop': '15px', 'color': '#2c3e50'}),
                 html.Ul([
-                    html.Li("开仓：预测方向 ↑ 时，以当前价格买入固定金额（默认 $10）"),
-                    html.Li("平仓：预测方向 ↓ 时，以当前价格卖出，计算盈亏"),
+                    html.Li("开仓：预测方向 ↑ 且当前空仓 → 以当前价格买入（固定金额 / 固定份额）"),
+                    html.Li("平仓：预测方向 ↓ 且当前持仓 → 以当前价格卖出，计算盈亏"),
                     html.Li("→ 信号：不触发任何交易，维持当前状态"),
-                    html.Li("强制平仓：回测区间结束或事件结束时，自动以最后价格平仓"),
-                    html.Li("权益计算：权益 = 现金余额 + 持仓市值"),
-                    html.Li("仅支持做多，不支持做空"),
-                ], style={'margin': '8px 0'})
-            ], style={'padding': '10px 15px', 'backgroundColor': '#f8f9fa', 'borderRadius': '6px'})
+                    html.Li("强制平仓：回测结束时自动以最后价格平仓"),
+                    html.Li("权益 = 现金 + 持仓市值；仅做多，不支持做空"),
+                ], style={'fontSize': '13px', 'color': '#495057'}),
+
+                # ---- 方向准确率说明 ----
+                html.H5("📊 方向准确率", style={'marginTop': '15px', 'color': '#2c3e50'}),
+                html.P(
+                    "基于信号发出后 1 小时的价格变化判定：↑ 信号后价格涨 → 正确；↓ 信号后价格跌 → 正确。"
+                    "该指标用于评估策略的短期方向判断能力。",
+                    style={'fontSize': '13px', 'color': '#495057', 'marginLeft': '20px'}
+                ),
+            ], style={'padding': '15px 20px', 'backgroundColor': '#f8f9fa', 'borderRadius': '6px'})
         ], style={'marginTop': '20px'}),
 
     ], style={'padding': '10px 20px'})
@@ -506,7 +515,6 @@ def generate_signal_preview(params, series='7d'):  # ← 新增 series 参数（
     if backtest_range in ['pre', 'post']:
         gamestart_label = get_event_gamestart_label(event_id)
         if gamestart_label:
-            # 将 gamestart_label 转换为 UTC 时间戳（整数）
             gamestart_dt = pd.to_datetime(gamestart_label, utc=True)
             gamestart_ts = int(gamestart_dt.timestamp())
             if backtest_range == 'pre':
@@ -515,6 +523,14 @@ def generate_signal_preview(params, series='7d'):  # ← 新增 series 参数（
                 combined = combined[combined['hour_start_utc'] >= gamestart_ts]
             if combined.empty:
                 return go.Figure(), {'total_signals': 0}
+    elif backtest_range == 'custom':
+        pct = params.get('backtest_range_custom', [0, 100])
+        total_len = len(combined)
+        start_idx = int(total_len * pct[0] / 100)
+        end_idx = int(total_len * pct[1] / 100)
+        if end_idx <= start_idx:
+            return go.Figure(), {'total_signals': 0}
+        combined = combined.iloc[start_idx:end_idx].reset_index(drop=True)
     # ===== 区间过滤结束 =====
 
     if len(combined) < 10:
@@ -563,6 +579,9 @@ def generate_signal_preview(params, series='7d'):  # ← 新增 series 参数（
     # 信号统计
     stats = generator.get_signal_stats(signal_df)
 
+    # 仅用于显示的信号（受 signal_mode 影响）
+    display_df = generator.apply_display_filter(signal_df, params.get('signal_mode', 'full'))
+
     # ---- 构建图表 ----
     fig = make_subplots(
         rows=2, cols=1,
@@ -597,8 +616,8 @@ def generate_signal_preview(params, series='7d'):  # ← 新增 series 参数（
         row=1, col=1, secondary_y=True
     )
 
-    # ---- 信号箭头 ----
-    for idx, row in signal_df.iterrows():
+    # ---- 信号箭头（使用显示用的过滤后信号） ----
+    for idx, row in display_df.iterrows():
         signal = row['signal']
         if signal in ['↑', '↓', '→']:
             color = '#2ecc71' if signal == '↑' else '#e74c3c' if signal == '↓' else '#95a5a6'

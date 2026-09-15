@@ -84,6 +84,8 @@ def create_params_panel(default_event_id=None, series='7d'):
                         inline=True,
                         style={'marginTop': '4px', 'fontSize': '13px'}
                     ),
+                    html.Div("last=最新成交价 | avg=小时均价",
+                        style={'fontSize': '11px', 'color': '#7f8c8d', 'marginTop': '2px'}),
                 ], style={'marginBottom': '10px'}),
                 html.Div([
                     html.Label("推文速率窗口:", style={'fontWeight': 'bold', 'fontSize': '13px'}),
@@ -132,6 +134,8 @@ def create_params_panel(default_event_id=None, series='7d'):
                             marks={i: str(i) for i in range(0, 6, 1)},
                             tooltip={'placement': 'bottom', 'always_visible': False}
                         ),
+                        html.Div("距离 ≤ 容差 → 判定为「看平」（→）",
+                                 style={'fontSize': '11px', 'color': '#7f8c8d', 'marginTop': '2px'}),
                     ], style={'marginBottom': '10px'}),
                 ]),
                 html.Div([
@@ -146,6 +150,8 @@ def create_params_panel(default_event_id=None, series='7d'):
                             marks={0.005: '0.005', 0.01: '0.01', 0.015: '0.015', 0.02: '0.02'},
                             tooltip={'placement': 'bottom', 'always_visible': False}
                         ),
+                        html.Div("价格变动 ≤ 阈值 → 视为噪音，不触发新信号",
+                                 style={'fontSize': '11px', 'color': '#7f8c8d', 'marginTop': '2px'}),
                     ], style={'marginBottom': '10px'}),
                 ]),
                 html.Div([
@@ -160,6 +166,8 @@ def create_params_panel(default_event_id=None, series='7d'):
                             marks={0.5: '0.5', 1.0: '1.0', 2.0: '2.0', 3.0: '3.0', 4.0: '4.0'},
                             tooltip={'placement': 'bottom', 'always_visible': False}
                         ),
+                        html.Div("距离变动 ≤ 阈值 → 视为噪音，不触发新信号",
+                                 style={'fontSize': '11px', 'color': '#7f8c8d', 'marginTop': '2px'}),
                     ], style={'marginBottom': '10px'}),
                 ]),
                 html.Div([
@@ -174,6 +182,8 @@ def create_params_panel(default_event_id=None, series='7d'):
                             marks={i: str(i) for i in range(1, 13, 2)},
                             tooltip={'placement': 'bottom', 'always_visible': False}
                         ),
+                        html.Div("连续无有效信号 ≥ 惯性小时 → 强制输出「看平」",
+                                 style={'fontSize': '11px', 'color': '#7f8c8d', 'marginTop': '2px'}),
                     ], style={'marginBottom': '10px'}),
                 ]),
                 html.Div([
@@ -189,6 +199,8 @@ def create_params_panel(default_event_id=None, series='7d'):
                             inline=True,
                             style={'fontSize': '12px'}
                         ),
+                        html.Div("根据近期推文速率变化调整估算总量，限制 0.8~1.2 倍",
+                                 style={'fontSize': '11px', 'color': '#7f8c8d', 'marginTop': '2px'}),
                     ], style={'display': 'inline-block', 'width': '45%', 'paddingRight': '5%'}),
                     html.Div([
                         html.Label("动量系数:", style={'fontSize': '12px'}),
@@ -223,19 +235,9 @@ def create_params_panel(default_event_id=None, series='7d'):
                             value='start',
                             style={'width': '100%', 'fontSize': '12px'}
                         ),
-                    ], style={'display': 'inline-block', 'width': '45%', 'paddingRight': '5%'}),
-                    html.Div([
-                        html.Label("信号确认次数:", style={'fontSize': '12px'}),
-                        dcc.Slider(
-                            id='backtest-signal-confirm',
-                            min=1,
-                            max=5,
-                            step=1,
-                            value=1,
-                            marks={i: str(i) for i in range(1, 6)},
-                            tooltip={'placement': 'bottom', 'always_visible': False}
-                        ),
-                    ], style={'display': 'inline-block', 'width': '45%'}),
+                        html.Div("full=首尾 | start=只首 | end=只尾（仅影响图表显示）",
+                                 style={'fontSize': '11px', 'color': '#7f8c8d', 'marginTop': '2px'}),
+                    ], style={'marginBottom': '0px'}),
                 ], style={'marginBottom': '0px'}),
             ], style={'padding': '8px 0 4px 0'}),
         ], style={'marginBottom': '12px'}),
@@ -268,6 +270,8 @@ def create_params_panel(default_event_id=None, series='7d'):
                             inline=True,
                             style={'fontSize': '12px'}
                         ),
+                        html.Div("固定金额=每次投入固定美元 | 固定份额=每次买入固定份数",
+                                 style={'fontSize': '11px', 'color': '#7f8c8d', 'marginTop': '2px'}),
                     ], style={'display': 'inline-block', 'width': '45%'}),
                 ], style={'marginBottom': '8px'}),
                 html.Div([
@@ -290,11 +294,26 @@ def create_params_panel(default_event_id=None, series='7d'):
                                 {'label': '完整周期', 'value': 'full'},
                                 {'label': '开盘 → gamestart', 'value': 'pre'},
                                 {'label': 'gamestart → 结束', 'value': 'post'},
-                                {'label': '自定义', 'value': 'custom'}
+                                {'label': '自定义范围', 'value': 'custom'}
                             ],
                             value='full',
                             style={'width': '100%', 'fontSize': '12px'}
                         ),
+                        html.Div("完整周期 / 开盘→gamestart / gamestart→结束",
+                                 style={'fontSize': '11px', 'color': '#7f8c8d', 'marginTop': '2px'}),
+                        html.Div([
+                            dcc.RangeSlider(
+                                id='backtest-range-custom',
+                                min=0,
+                                max=100,
+                                step=5,
+                                value=[0, 100],
+                                marks={0: '0%', 25: '25%', 50: '50%', 75: '75%', 100: '100%'},
+                                tooltip={'placement': 'bottom', 'always_visible': False}
+                            ),
+                            html.Div("按事件时长百分比选择回测时段（0%=事件开始，100%=事件结束）",
+                                     style={'fontSize': '11px', 'color': '#7f8c8d', 'marginTop': '2px'}),
+                        ], id='backtest-range-custom-container', style={'display': 'none', 'marginTop': '8px'}),
                     ], style={'display': 'inline-block', 'width': '45%'}),
                 ], style={'marginBottom': '0px'}),
             ], style={'padding': '8px 0 4px 0'}),
@@ -352,6 +371,15 @@ def create_params_panel(default_event_id=None, series='7d'):
 
 def register_params_callbacks(app):
     """注册所有参数面板相关的回调"""
+    # ===== 回测区间切换：自定义滑块显示/隐藏 =====
+    @app.callback(
+        Output('backtest-range-custom-container', 'style'),
+        Input('backtest-range', 'value')
+    )
+    def toggle_custom_range(range_type):
+        if range_type == 'custom':
+            return {'display': 'block', 'marginTop': '8px'}
+        return {'display': 'none', 'marginTop': '8px'}
 
     # ===== 事件 → 市场联动 =====
     @app.callback(
@@ -394,17 +422,17 @@ def register_params_callbacks(app):
         State('backtest-momentum-enable', 'value'),
         State('backtest-momentum-coef', 'value'),
         State('backtest-signal-mode', 'value'),
-        State('backtest-signal-confirm', 'value'),
         State('backtest-initial-capital', 'value'),
         State('backtest-position-mode', 'value'),
         State('backtest-position-size', 'value'),
         State('backtest-range', 'value'),
+        State('backtest-range-custom', 'value'),
     )
     def save_params(n_clicks_run, n_clicks_preview, event_id, market_id,
                     price_type, window_type, window_custom,
                     capacity, price_threshold, distance_threshold, inertia,
-                    momentum_enable, momentum_coef, signal_mode, signal_confirm,
-                    initial_capital, position_mode, position_size, backtest_range):
+                    momentum_enable, momentum_coef, signal_mode,
+                    initial_capital, position_mode, position_size, backtest_range, backtest_range_custom):
         trigger = dash.callback_context.triggered[0]['prop_id'] if dash.callback_context.triggered else ''
         if not trigger or (not n_clicks_run and not n_clicks_preview):
             return {}
@@ -441,11 +469,11 @@ def register_params_callbacks(app):
             'momentum_enable': momentum_enable,
             'momentum_coef': momentum_coef or 0.10,
             'signal_mode': signal_mode or 'start',
-            'signal_confirm': signal_confirm or 1,
             'initial_capital': initial_capital or 100,
             'position_mode': position_mode or 'fixed_amount',
             'position_size': position_size or 10,
             'backtest_range': backtest_range or 'full',
+            'backtest_range_custom': backtest_range_custom or [0, 100],
         }
         return params
 

@@ -127,7 +127,6 @@ class DirectionSignalGenerator:
         df['total_estimate'] = estimates
         df['hold_hours'] = hold_hours_list
 
-        df = self._apply_signal_filter(df)
         return df
 
     def _calculate_momentum(self, df: pd.DataFrame, idx: int) -> float:
@@ -176,39 +175,33 @@ class DirectionSignalGenerator:
         self.prev_price = price
         return signal, self.hold_hours
 
-    def _apply_signal_filter(self, df: pd.DataFrame) -> pd.DataFrame:
+    def apply_display_filter(self, df: pd.DataFrame, mode: str = None) -> pd.DataFrame:
+        """仅用于显示时过滤信号（不影响回测）"""
         df_signal = df.copy()
+        if mode is None:
+            mode = self.signal_mode
 
-        if self.signal_mode == 'full':
-            # 首尾：连续同向信号只显示第一个和最后一个
-            # 标记有效信号（非空）
-            df_signal['signal_valid'] = df_signal['signal'] != ''
-            # 获取前一个和后一个信号
+        if mode == 'full':
             df_signal['prev_signal'] = df_signal['signal'].shift(1)
             df_signal['next_signal'] = df_signal['signal'].shift(-1)
-            # 判断是否为段的起点（当前有效，且前一个不同或为空）
             df_signal['is_start'] = (df_signal['signal'] != '') & (df_signal['signal'] != df_signal['prev_signal'])
-            # 判断是否为段的终点（当前有效，且后一个不同或为空）
             df_signal['is_end'] = (df_signal['signal'] != '') & (df_signal['signal'] != df_signal['next_signal'])
-            # 只保留起点和终点
             df_signal['signal'] = df_signal['signal'].where(df_signal['is_start'] | df_signal['is_end'], '')
-            return df_signal.drop(columns=['prev_signal', 'next_signal', 'is_start', 'is_end', 'signal_valid'])
+            return df_signal.drop(columns=['prev_signal', 'next_signal', 'is_start', 'is_end'])
 
-        elif self.signal_mode == 'start':
-            # 只首：只显示每个连续段的第一个
+        elif mode == 'start':
             df_signal['prev_signal'] = df_signal['signal'].shift(1)
             df_signal['is_start'] = (df_signal['signal'] != '') & (df_signal['signal'] != df_signal['prev_signal'])
             df_signal['signal'] = df_signal['signal'].where(df_signal['is_start'], '')
             return df_signal.drop(columns=['prev_signal', 'is_start'])
 
-        elif self.signal_mode == 'end':
-            # 只尾：只显示每个连续段的最后一个
+        elif mode == 'end':
             df_signal['next_signal'] = df_signal['signal'].shift(-1)
             df_signal['is_end'] = (df_signal['signal'] != '') & (df_signal['signal'] != df_signal['next_signal'])
             df_signal['signal'] = df_signal['signal'].where(df_signal['is_end'], '')
             return df_signal.drop(columns=['next_signal', 'is_end'])
 
-        return df
+        return df_signal
 
     def get_signal_stats(self, df: pd.DataFrame) -> Dict:
         """计算信号统计指标"""
