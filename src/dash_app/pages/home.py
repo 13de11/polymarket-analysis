@@ -3,6 +3,7 @@
 """
 from dash import html, dcc
 from datetime import datetime
+from src.dash_app.utils.stats_loader import get_overview_stats
 
 
 def _feature_card(title, desc, href):
@@ -27,11 +28,49 @@ def _feature_card(title, desc, href):
         'cursor': 'pointer'
     })
 
+def _build_kpi_cards():
+    """构建首页 KPI 卡片（静态，7d 系列）"""
+    try:
+        stats = get_overview_stats('7d')
+    except Exception as e:
+        print(f"首页 KPI 加载失败: {e}")
+        return html.Div("暂无数据", style={'color': '#6c757d'})
+
+    def card(icon, label, value):
+        return html.Div([
+            html.Div(f"{icon} {label}", style={'fontSize': '12px', 'color': '#6c757d'}),
+            html.Div(str(value), style={'fontSize': '24px', 'fontWeight': 'bold', 'marginTop': '4px'})
+        ], style={
+            'textAlign': 'center',
+            'padding': '15px',
+            'backgroundColor': 'white',
+            'borderRadius': '6px',
+            'boxShadow': '0 1px 3px rgba(0,0,0,0.1)',
+            'minWidth': '140px',
+            'flex': '1'
+        })
+
+    return html.Div([
+        card("📅", "总事件", stats.get('total_events', 0)),
+        card("🐦", "总推文", f"{stats.get('total_tweets', 0):,}"),
+        card("🎯", "命中市场", stats.get('hit_count', 0)),
+        card("🔥", "最热区间", stats.get('hot_range', '—')),
+    ], style={
+        'display': 'flex',
+        'flexWrap': 'wrap',
+        'gap': '15px'
+    })
 
 def layout():
     return html.Div([
         html.H2("🏠 欢迎使用 Polymarket 数据分析平台"),
         html.Hr(),
+
+        # ---- KPI 数据概览 ----
+        html.Div([
+            html.H4("📊 平台数据概览（7天事件）", style={'marginBottom': '15px'}),
+            html.Div(id='home-kpi-cards', children=_build_kpi_cards()),
+        ]),
 
         # ---- 功能入口卡片 ----
         html.Div([

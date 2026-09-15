@@ -107,6 +107,19 @@ def run_backtest(params: dict, series='7d'):
             position_size=params.get('position_size', 10),
         )
         result = engine.run(signal_df, price_col='price')
+
+        # ---- 序列化：把 Timestamp 转成字符串，供 dcc.Store 缓存 ----
+        if result:
+            for e in result.get('equity_curve', []):
+                ts = e.get('timestamp')
+                if hasattr(ts, 'isoformat'):
+                    e['timestamp'] = ts.isoformat()
+            for t in result.get('trades', []):
+                for key in ('entry_time', 'exit_time'):
+                    ts = t.get(key)
+                    if hasattr(ts, 'isoformat'):
+                        t[key] = ts.isoformat()
+
         return result
 
     except Exception as e:

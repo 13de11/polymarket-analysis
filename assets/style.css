@@ -1,0 +1,82 @@
+/* ========== 响应式布局 ========== */
+
+.sidebar {
+    width: 220px;
+    flex-shrink: 0;
+}
+
+.main-content {
+    flex: 1;
+    overflow: auto;
+}
+
+@media (max-width: 768px) {
+    /* 整体布局改为纵向 */
+    .app-container {
+        flex-direction: column !important;
+    }
+
+    .sidebar {
+        width: 100% !important;
+        min-height: auto !important;
+        border-right: none !important;
+        border-bottom: 1px solid #dee2e6;
+    }
+
+    .main-content {
+        padding: 0 10px !important;
+    }
+
+    /* 导航列表改为横向 */
+    .sidebar ul {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        padding: 0 !important;
+    }
+
+    .sidebar ul li {
+        padding: 4px 8px !important;
+    }
+}
+
+@media (max-width: 768px) {
+    /* 回测页左右布局改为上下 */
+    .backtest-left, .backtest-right {
+        width: 100% !important;
+        padding-right: 0 !important;
+    }
+
+    /* insights 两栏改为单栏 */
+    .insights-half {
+        width: 100% !important;
+        float: none !important;
+        margin-bottom: 20px;
+    }
+}
+
+/* ========== 导航栏交互 ========== */
+.nav-link {
+    display: block;
+    padding: 8px 12px;
+    border-radius: 6px;
+    text-decoration: none;
+    color: #333;
+    transition: background-color 0.15s, color 0.15s;
+}
+
+.nav-link:hover {
+    background-color: #e7f1ff;
+    color: #0d6efd;
+}
+
+.nav-link.active {
+    background-color: #0d6efd;
+    color: white;
+    font-weight: bold;
+}
+
+.nav-link.active:hover {
+    background-color: #0b5ed7;
+    color: white;
+}

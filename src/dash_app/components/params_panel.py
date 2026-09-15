@@ -8,7 +8,7 @@
 """
 
 import dash
-from dash import html, dcc, Input, Output, State, callback
+from dash import html, dcc, Input, Output, State, callback, no_update
 import pandas as pd
 import numpy as np
 
@@ -397,9 +397,14 @@ def register_params_callbacks(app):
     @app.callback(
         Output('backtest-market-selector', 'options'),
         Output('backtest-market-selector', 'value'),
-        Input('backtest-event-selector', 'value')
+        Input('backtest-event-selector', 'value'),
+        Input('url', 'pathname'),
     )
-    def update_markets(event_id):
+    def update_markets(event_id, pathname):
+        from dash import no_update
+        if pathname != '/backtest':
+            return no_update, no_update
+
         if not event_id:
             return [], None
         markets_df = get_markets_by_event(event_id)
@@ -422,10 +427,14 @@ def register_params_callbacks(app):
         Output('backtest-event-selector', 'options'),
         Output('backtest-event-selector', 'value'),
         Input('series-selector', 'value'),
-        prevent_initial_call=True,
+        Input('url', 'pathname'),
     )
-    def update_backtest_events_on_series_change(series):
+    def update_backtest_events_on_series_change(series, pathname):
         """当系列切换时，重新生成事件列表"""
+        from dash import no_update
+        if pathname != '/backtest':
+            return no_update, no_update
+
         events_df = get_elon_tweet_events(series)
         if events_df.empty:
             return [], None

@@ -4,11 +4,10 @@ import os
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, PROJECT_ROOT)
 
-from dash import Dash, html, dcc, callback, Input, Output
+from dash import Dash, html, dcc, callback, Input, Output, callback_context
 
 app = Dash(__name__, suppress_callback_exceptions=True)
 server = app.server
-
 
 from src.dash_app.pages import price_tweet_analysis
 from src.dash_app.pages import home
@@ -20,6 +19,7 @@ app.layout = html.Div([
     dcc.Location(id='url'),
     html.Div([
 
+        # ========== 左侧导航栏 ==========
         html.Div([
             html.H3("📊 导航", style={'marginTop': 0, 'padding': '15px 0'}),
 
@@ -48,39 +48,37 @@ app.layout = html.Div([
             }),
 
             html.Ul([
-                html.Li(dcc.Link("🏠 首页", href="/"), style={'listStyle': 'none', 'padding': '8px 0'}),
-                html.Li(dcc.Link("📈 价格-推文分析", href="/analysis"), style={'listStyle': 'none', 'padding': '8px 0'}),
-                html.Li(dcc.Link("📊 数据分析中心", href="/insights"), style={'listStyle': 'none', 'padding': '8px 0'}),
-                html.Li(dcc.Link("📈 预测回测", href="/backtest"), style={'listStyle': 'none', 'padding': '8px 0'}),
+                html.Li(dcc.Link("🏠 首页", href="/", id='nav-home', className='nav-link'), style={'listStyle': 'none', 'marginBottom': '4px'}),
+                html.Li(dcc.Link("📈 价格-推文分析", href="/analysis", id='nav-analysis', className='nav-link'), style={'listStyle': 'none', 'marginBottom': '4px'}),
+                html.Li(dcc.Link("📊 数据分析中心", href="/insights", id='nav-insights', className='nav-link'), style={'listStyle': 'none', 'marginBottom': '4px'}),
+                html.Li(dcc.Link("📈 预测回测", href="/backtest", id='nav-backtest', className='nav-link'), style={'listStyle': 'none', 'marginBottom': '4px'}),
             ], style={'padding': 0, 'margin': 0})
 
-        ], style={
-            'width': '220px',
+        ], className='sidebar', style={
             'backgroundColor': '#f8f9fa',
             'padding': '20px 15px',
             'minHeight': '100vh',
             'boxSizing': 'border-box',
             'borderRight': '1px solid #dee2e6',
-            'flexShrink': 0
         }),
 
+        # ========== 右侧主内容区 ==========
         html.Div([
             html.H1("📊 Polymarket 数据分析平台", style={'textAlign': 'center', 'padding': '10px 0', 'margin': 0}),
             html.Hr(style={'margin': '10px 0'}),
             html.Div(id='page-content', style={'padding': '20px'})
-        ], style={
-            'flex': 1,
+        ], className='main-content', style={
             'padding': '0 20px',
             'boxSizing': 'border-box',
-            'overflow': 'auto'
         })
 
-    ], style={
+    ], className='app-container', style={
         'display': 'flex',
         'flexDirection': 'row',
         'minHeight': '100vh'
     })
 ])
+
 
 @callback(
     Output('series-label', 'children'),
@@ -89,6 +87,7 @@ app.layout = html.Div([
 def update_series_label(series):
     labels = {'7d': '当前显示: 7天推文事件', '48h': '当前显示: 48小时推文事件'}
     return labels.get(series, '当前显示: 7天推文事件')
+
 
 @callback(
     Output('page-content', 'children'),
@@ -104,7 +103,27 @@ def display_page(pathname):
     else:
         return home.layout()
 
+@callback(
+    Output('nav-home', 'className'),
+    Output('nav-analysis', 'className'),
+    Output('nav-insights', 'className'),
+    Output('nav-backtest', 'className'),
+    Input('url', 'pathname'),
+)
+def highlight_nav(pathname):
+    base = 'nav-link'
+    active = 'nav-link active'
+    if pathname == '/analysis':
+        return base, active, base, base
+    elif pathname == '/insights':
+        return base, base, active, base
+    elif pathname == '/backtest':
+        return base, base, base, active
+    else:  # '/' 或未知路径
+        return active, base, base, base
+
 register_params_callbacks(app)
+
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=8050)

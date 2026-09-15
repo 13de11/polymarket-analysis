@@ -1,7 +1,7 @@
 """
 价格-推文分析页面
 """
-from dash import html, dcc, Input, Output, State, callback
+from dash import html, dcc, Input, Output, State, callback, no_update
 import plotly.graph_objects as go
 import plotly.express as px
 from plotly.subplots import make_subplots
@@ -151,8 +151,8 @@ def layout():
                     html.Span("：该小时的推文总量")
                 ]),
                 html.Li([
-                    html.Strong("累计推文（第二右轴，虚线）"),
-                    html.Span("：从事件开始到当前的总推文数")
+                    html.Strong("累计推文"),
+                    html.Span("：鼠标悬停在推文柱状图上，tooltip 中会显示")
                 ]),
                 html.Li([
                     html.Strong("⭐ 命中市场"),
@@ -189,9 +189,13 @@ def layout():
 @callback(
     Output('event-selector', 'options'),
     Output('event-selector', 'value'),
-    Input('series-selector', 'value')
+    Input('series-selector', 'value'),
+    Input('url', 'pathname'),
 )
-def update_events(series):
+def update_events(series, pathname):
+    if pathname != '/analysis':
+        return no_update, no_update   # ← 不在本页，不动
+
     events_df = get_elon_tweet_events(series)
 
     if events_df.empty:
@@ -218,9 +222,13 @@ def update_events(series):
     Output('market-selector', 'value'),
     Output('target-market-store', 'data'),
     Output('market-hint', 'children'),
-    Input('event-selector', 'value')
+    Input('event-selector', 'value'),
+    Input('url', 'pathname'),
 )
-def update_markets(event_id):
+def update_markets(event_id, pathname):
+    if pathname != '/analysis':
+        return no_update, no_update, no_update, no_update
+
     if not event_id:
         return [], [], {}, ""
 
@@ -273,8 +281,12 @@ def update_markets(event_id):
     Input('market-selector', 'value'),
     Input('price-type-selector', 'value'),
     State('target-market-store', 'data'),
+    Input('url', 'pathname'),
 )
-def update_chart(event_id, selected_market_ids, price_type, target_info):
+def update_chart(event_id, selected_market_ids, price_type, target_info, pathname):
+    if pathname != '/analysis':
+        return no_update, no_update
+
     if not event_id or not selected_market_ids:
         return go.Figure(), html.Div("请选择事件和市场")
 
@@ -343,10 +355,9 @@ def update_chart(event_id, selected_market_ids, price_type, target_info):
         )
 
     if not tweet_df.empty:
-        hovertemplate_bar = (
-            '每小时推文数: %{y}'
-            '<extra></extra>'
-        )
+        # 预先算累计推文（用于 hover 显示）
+        tweet_df['cumsum'] = tweet_df['tweet_count'].cumsum()
+
         fig.add_trace(
             go.Bar(
                 x=tweet_df['datetime_utc'],
@@ -354,24 +365,8 @@ def update_chart(event_id, selected_market_ids, price_type, target_info):
                 name='每小时推文数',
                 marker=dict(color='rgba(255, 100, 50, 0.4)'),
                 yaxis='y2',
-                hovertemplate=hovertemplate_bar
-            ),
-            secondary_y=True
-        )
-
-        tweet_df['cumsum'] = tweet_df['tweet_count'].cumsum()
-        hovertemplate_cum = (
-            '累计推文数: %{y:,.0f}'
-            '<extra></extra>'
-        )
-        fig.add_trace(
-            go.Scatter(
-                x=tweet_df['datetime_utc'],
-                y=tweet_df['cumsum'],
-                name='累计推文',
-                line=dict(color='rgba(50, 150, 255, 0.7)', width=2, dash='dash'),
-                yaxis='y3',
-                hovertemplate=hovertemplate_cum
+                customdata=tweet_df['cumsum'],
+                hovertemplate='每小时推文: %{y}<br>累计推文: %{customdata:,.0f}<extra></extra>'
             ),
             secondary_y=True
         )
@@ -434,21 +429,6 @@ def update_chart(event_id, selected_market_ids, price_type, target_info):
 
     fig.update_yaxes(title_text='价格', secondary_y=False, color='#1f77b4')
     fig.update_yaxes(title_text='每小时推文数', secondary_y=True, color='#ff6b35', side='right')
-
-    fig.update_layout(
-        yaxis3=dict(
-            title='累计推文',
-            overlaying='y',
-            side='right',
-            position=0.92,
-            color='rgba(50, 150, 255, 0.7)',
-            showgrid=False
-        )
-    )
-
-    for trace in fig.data:
-        if trace.name == '累计推文':
-            trace.yaxis = 'y3'
 
     stats_items = []
 

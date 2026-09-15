@@ -9,7 +9,7 @@
 """
 
 import dash
-from dash import html, dcc, Input, Output, callback
+from dash import html, dcc, Input, Output, callback, no_update
 import plotly.express as px
 import plotly.graph_objects as go
 import pandas as pd
@@ -144,7 +144,7 @@ def layout():
                     html.Span("柱子越高说明该区间“达成”的概率越大，可以优先跟踪这些区间。",
                               style={'color': '#495057', 'fontSize': '12px'})
                 ], style={'padding': '8px 12px', 'backgroundColor': '#f1f3f5', 'borderRadius': '4px', 'marginTop': '8px'})
-            ], style={'width': '48%', 'display': 'inline-block', 'verticalAlign': 'top'}),
+            ], className='insights-half', style={'width': '48%', 'display': 'inline-block', 'verticalAlign': 'top'}),
             html.Div([
                 html.H4("📈 价格 vs 推文相关性", style={'marginBottom': 10}),
                 dcc.Graph(id='insights-correlation', style={'height': '300px'}),
@@ -157,7 +157,8 @@ def layout():
                     html.Span("如果相关性显著为正，说明推文增多时价格倾向于上涨，可作为策略参考。",
                               style={'color': '#495057', 'fontSize': '12px'})
                 ], style={'padding': '8px 12px', 'backgroundColor': '#f1f3f5', 'borderRadius': '4px', 'marginTop': '8px'})
-            ], style={'width': '48%', 'display': 'inline-block', 'float': 'right', 'verticalAlign': 'top'})
+            ], className='insights-half',
+                style={'width': '48%', 'display': 'inline-block', 'float': 'right', 'verticalAlign': 'top'})
         ], style={'marginBottom': 20}),
 
         # ---- 各区间平均存活时长 ----
@@ -275,9 +276,13 @@ def layout():
     Output('insights-hourly-distribution', 'figure'),
     Output('insights-survival-chart', 'figure'),
     Input('insights-time-range', 'value'),
-    Input('series-selector', 'value')
+    Input('series-selector', 'value'),
+    Input('url', 'pathname'),  # ← 新增
+    # prevent_initial_call = False,
 )
-def update_insights(time_range, series):
+def update_insights(time_range, series, pathname):
+    if pathname != '/insights':
+        return (no_update,) * 9   # 9 个 Output 都 no_update
     stats = get_overview_stats(series)
     kpi_cards = html.Div([
         html.Div([

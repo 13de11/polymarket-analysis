@@ -4,7 +4,7 @@
 """
 
 import dash
-from dash import html, dcc, Input, Output, State, callback
+from dash import html, dcc, Input, Output, State, callback, no_update
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from typing import Dict, Any
@@ -40,7 +40,7 @@ def layout():
             # ---- 左侧：参数面板 ----
             html.Div([
                 create_params_panel()
-            ], style={
+            ], className='backtest-left', style={
                 'width': '28%',
                 'display': 'inline-block',
                 'verticalAlign': 'top',
@@ -70,14 +70,15 @@ def layout():
                 # ---- Tab 内容（带 loading）----
                 dcc.Loading(
                     id='loading-backtest',
-                    type='circle',
+                    type='default',  # ← 改成 default
+                    color='#3498db',  # ← 蓝色
                     children=[html.Div(id='backtest-tab-content', style={'minHeight': '400px'})]
                 ),
                 # ---- 隐藏存储 ----
                 dcc.Store(id='backtest-result-store', data={}),
                 dcc.Store(id='backtest-trades-store', data=[]),
                 dcc.Store(id='backtest-equity-store', data=[]),
-            ], style={
+            ], className='backtest-right', style={
                 'width': '70%',
                 'display': 'inline-block',
                 'verticalAlign': 'top',
@@ -190,12 +191,13 @@ def layout():
     Output('backtest-tab-content', 'children'),
     Output('backtest-status-text', 'children'),
     Input('backtest-tabs', 'value'),
-    Input('backtest-params-store', 'data'),
-    Input('series-selector', 'value'),  # ← 新增这一行
+    Input('backtest-result-store', 'data'),   # ← 改：监听 store
+    Input('series-selector', 'value'),
+    State('backtest-params-store', 'data'),
     State('backtest-preview-btn', 'n_clicks'),
     State('backtest-run-btn', 'n_clicks'),
 )
-def render_tab_content(tab_name, params, series, preview_clicks, run_clicks):  # ← 新增 series 参数
+def render_tab_content(tab_name, cached_result, series, params, preview_clicks, run_clicks):
     """根据选中的 Tab 和参数渲染内容"""
 
     # ===== 信号预览 Tab =====
@@ -234,7 +236,7 @@ def render_tab_content(tab_name, params, series, preview_clicks, run_clicks):  #
             ]), "请选择事件和市场，点击「运行回测」"
 
         # 运行回测
-        result = run_backtest(params, series)  # ← 传入 series
+        result = cached_result if cached_result else None
         if result is None:
             return html.Div([
                 html.P("❌ 回测运行失败，请检查参数",
@@ -283,7 +285,7 @@ def render_tab_content(tab_name, params, series, preview_clicks, run_clicks):  #
                 html.P("请配置参数并点击「运行回测」", style={'color': '#6c757d', 'textAlign': 'center'})
             ]), "请选择事件和市场，点击「运行回测」"
 
-        result = run_backtest(params, series)
+        result = cached_result if cached_result else None
         if result is None:
             return html.Div([
                 html.P("❌ 回测运行失败，请检查参数",
@@ -305,10 +307,15 @@ def render_tab_content(tab_name, params, series, preview_clicks, run_clicks):  #
                 'result') == '亏损' else '#f39c12'
             entry_time = t.get('entry_time', '')
             exit_time = t.get('exit_time', '')
+            # 处理 pd.Timestamp 或 ISO 字符串
             if hasattr(entry_time, 'strftime'):
                 entry_time = entry_time.strftime('%Y-%m-%d %H:%M')
+            elif isinstance(entry_time, str) and 'T' in entry_time:
+                entry_time = entry_time.replace('T', ' ')[:16]
             if hasattr(exit_time, 'strftime'):
                 exit_time = exit_time.strftime('%Y-%m-%d %H:%M')
+            elif isinstance(exit_time, str) and 'T' in exit_time:
+                exit_time = exit_time.replace('T', ' ')[:16]
             table_rows.append(html.Tr([
                 html.Td(str(t.get('trade_id', ''))),
                 html.Td(entry_time),
@@ -488,6 +495,18 @@ def render_tab_content(tab_name, params, series, preview_clicks, run_clicks):  #
     # 默认情况（不应该发生）
     return html.Div(), ""
 
+@callback(
+    Output('backtest-result-store', 'data'),
+    Input('backtest-params-store', 'data'),
+    Input('series-selector', 'value'),
+    prevent_initial_call=True,
+)
+def cache_backtest_result(params, series):
+    """参数变化时跑一次回测，结果存入 store"""
+    if not params or not params.get('market_id'):
+        return {}
+    result = run_backtest(params, series)
+    return result if result else {}
 
 
 # ==================== 信号预览生成函数 ====================
@@ -717,6 +736,9 @@ def create_equity_curve_chart(equity_curve: list) -> go.Figure:
     if df.empty:
         return go.Figure()
 
+    # 确保 timestamp 是 datetime 类型（缓存后可能是 ISO 字符串）
+    df['timestamp'] = pd.to_datetime(df['timestamp'])
+
     fig = go.Figure()
 
     fig.add_trace(go.Scatter(
@@ -739,6 +761,12 @@ def create_equity_curve_chart(equity_curve: list) -> go.Figure:
         hovermode='x',
         height=300,
         margin=dict(l=40, r=40, t=40, b=40)
+    )
+
+    # 指定 x 轴时间格式
+    fig.update_xaxes(
+        tickformat='%m-%d %H:%M',
+        hoverformat='%Y-%m-%d %H:%M:%S'
     )
 
     return fig
