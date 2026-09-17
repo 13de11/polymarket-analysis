@@ -11,7 +11,7 @@ server = app.server
 
 from src.dash_app.pages import price_tweet_analysis
 from src.dash_app.pages import home
-from src.dash_app.pages import insights_dashboard
+from src.dash_app.pages import insights as insights_dashboard
 from src.dash_app.pages import backtest
 from src.dash_app.pages.backtest.params_panel import register_params_callbacks
 
@@ -129,7 +129,6 @@ def highlight_nav(pathname):
 
 
 register_params_callbacks(app)
-
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=8050)
