@@ -24,6 +24,7 @@ from src.dash_app.utils.backtest.engine import BacktestEngine
 from src.dash_app.utils.metrics.calculator import format_metrics_for_display
 from src.dash_app.utils.comparison.engine import ComparisonEngine
 from src.dash_app.utils.backtest.runner import run_backtest
+from src.dash_app.pages.backtest_evaluation import render_evaluation
 
 def layout():
     return html.Div([
@@ -62,6 +63,7 @@ def layout():
                         dcc.Tab(label='🔍 信号预览', value='preview'),
                         dcc.Tab(label='📊 绩效概览', value='overview'),
                         dcc.Tab(label='📋 交易明细', value='trades'),
+                        dcc.Tab(label='📈 策略评估', value='evaluation'),
                         dcc.Tab(label='📊 策略对比', value='comparison'),
                         dcc.Tab(label='📊 敏感性分析', value='sensitivity'),
                     ],
@@ -353,6 +355,26 @@ def render_tab_content(tab_name, cached_result, series, params, preview_clicks, 
                 ], style={'width': '100%', 'borderCollapse': 'collapse', 'fontSize': '13px'})
             ], style={'overflowX': 'auto', 'maxHeight': '400px', 'overflowY': 'auto'})
         ]), f"✅ 共 {len(completed_trades)} 笔交易"
+
+    # ===== 策略评估 Tab =====
+    elif tab_name == 'evaluation':
+        if not params or not params.get('market_id'):
+            return html.Div([
+                html.P("📈 策略评估将在此显示",
+                       style={'color': '#6c757d', 'textAlign': 'center', 'padding': '40px 0'}),
+                html.P("请配置参数并点击「运行回测」",
+                       style={'color': '#6c757d', 'textAlign': 'center'})
+            ]), "请选择事件和市场，点击「运行回测」"
+
+        result = run_backtest(params, series)
+        if result is None:
+            return html.Div([
+                html.P("❌ 回测运行失败，请检查参数",
+                       style={'color': '#e74c3c', 'textAlign': 'center', 'padding': '40px 0'})
+            ]), "回测运行失败"
+
+        return render_evaluation(params, result), "✅ 策略评估已加载"
+    
 
     # ===== 策略对比 Tab =====
     elif tab_name == 'comparison':
