@@ -2,7 +2,7 @@
 数据分析中心 - 页面布局
 """
 
-from dash import html, dcc
+from dash import html, dcc, callback, Output, Input
 
 from src.dash_app.pages.insights.explorer import render_explorer_section
 
@@ -16,40 +16,56 @@ def layout():
                    style={'color': '#6c757d', 'fontSize': '14px', 'marginTop': 0}),
         ], style={'marginBottom': 20}),
 
-        # ---- KPI 指标卡 ----
-        html.Div([
-            html.Strong("📊 核心指标含义："),
-            html.Span("总事件 = 所有已结束的事件数；总推文 = 覆盖时间内的推文总量；",
-                      style={'marginLeft': '10px'}),
-            html.Span("命中市场 = 最终价格 > 0.99 的子市场数；最热区间 = 历史上命中次数最多的推文区间。",
-                      style={'marginLeft': '5px'}),
-        ], style={'padding': '8px 12px', 'backgroundColor': '#f8f9fa', 'borderRadius': '4px', 'marginBottom': '10px'}),
-        html.Div(id='insights-kpi-cards', style={'marginBottom': 20}),
+        # ---- Tab 切换 ----
+        dcc.Tabs(
+            id='insights-tabs',
+            value='overview',
+            children=[
+                dcc.Tab(label='📊 总览', value='overview'),
+                dcc.Tab(label='🐦 推文分析', value='tweets'),
+                dcc.Tab(label='🎯 命中与相关性', value='hits'),
+                dcc.Tab(label='🔍 推文探索器', value='explorer'),
+            ],
+            style={'marginBottom': '15px'}
+        ),
 
-        # ---- 移动平均数值卡 ----
+        # ============ Tab 1：总览 ============
         html.Div([
-            html.H4("📈 推文移动平均值", style={'marginBottom': 10}),
-            html.Div(id='insights-ma-cards', style={'marginBottom': 15}),
-        ]),
-
-        # ---- 主图区：命中市场热力图 ----
-        html.Div([
-            html.H4("🎯 事件-区间命中热力图", style={'marginBottom': 10}),
-            html.P("横轴为事件（按时间排序），纵轴为推文区间，红色表示命中，灰色表示未命中",
-                   style={'color': '#6c757d', 'fontSize': '13px', 'marginTop': 0}),
-            dcc.Graph(id='insights-hit-heatmap', style={'height': '500px'}),
+            # KPI 指标卡
             html.Div([
-                html.Strong("📖 如何阅读："),
-                html.Span("每一行代表一个推文区间（如 180-199），每一列代表一个历史事件。红色格子表示该区间的最终价格 > 0.99（即“命中”），灰色表示未命中。",
-                          style={'color': '#495057', 'fontSize': '12px'}),
-                html.Br(),
-                html.Strong("💡 统计意义："),
-                html.Span("热力图可以直观看出哪些区间更容易“达成”，以及不同事件之间的一致性。颜色越集中，说明该区间预测稳定性越高。",
-                          style={'color': '#495057', 'fontSize': '12px'})
-            ], style={'padding': '8px 12px', 'backgroundColor': '#f1f3f5', 'borderRadius': '4px', 'marginTop': '8px'})
-        ], style={'marginBottom': 30}),
+                html.Strong("📊 核心指标含义："),
+                html.Span("总事件 = 所有已结束的事件数；总推文 = 覆盖时间内的推文总量；",
+                          style={'marginLeft': '10px'}),
+                html.Span("命中市场 = 最终价格 > 0.99 的子市场数；最热区间 = 历史上命中次数最多的推文区间。",
+                          style={'marginLeft': '5px'}),
+            ], style={'padding': '8px 12px', 'backgroundColor': '#f8f9fa', 'borderRadius': '4px', 'marginBottom': '10px'}),
+            html.Div(id='insights-kpi-cards', style={'marginBottom': 20}),
 
-        # ---- 推文分析 ----
+            # 移动平均数值卡
+            html.Div([
+                html.H4("📈 推文移动平均值", style={'marginBottom': 10}),
+                html.Div(id='insights-ma-cards', style={'marginBottom': 15}),
+            ]),
+
+            # 命中市场热力图
+            html.Div([
+                html.H4("🎯 事件-区间命中热力图", style={'marginBottom': 10}),
+                html.P("横轴为事件（按时间排序），纵轴为推文区间，红色表示命中，灰色表示未命中",
+                       style={'color': '#6c757d', 'fontSize': '13px', 'marginTop': 0}),
+                dcc.Graph(id='insights-hit-heatmap', style={'height': '500px'}),
+                html.Div([
+                    html.Strong("📖 如何阅读："),
+                    html.Span("每一行代表一个推文区间（如 180-199），每一列代表一个历史事件。红色格子表示该区间的最终价格 > 0.99（即“命中”），灰色表示未命中。",
+                              style={'color': '#495057', 'fontSize': '12px'}),
+                    html.Br(),
+                    html.Strong("💡 统计意义："),
+                    html.Span("热力图可以直观看出哪些区间更容易“达成”，以及不同事件之间的一致性。颜色越集中，说明该区间预测稳定性越高。",
+                              style={'color': '#495057', 'fontSize': '12px'})
+                ], style={'padding': '8px 12px', 'backgroundColor': '#f1f3f5', 'borderRadius': '4px', 'marginTop': '8px'})
+            ], style={'marginBottom': 30}),
+        ], id='insights-tab-overview', style={'display': 'block'}),
+
+        # ============ Tab 2：推文分析 ============
         html.Div([
             html.H4("🐦 推文全量分析", style={'marginBottom': 10}),
             html.Div([
@@ -66,6 +82,7 @@ def layout():
                     style={'width': '200px', 'display': 'inline-block', 'marginLeft': '10px'}
                 ),
             ], style={'marginBottom': 15}),
+
             html.Div([
                 dcc.Graph(id='insights-tweet-timeline', style={'height': '350px'}),
                 html.Div([
@@ -78,6 +95,7 @@ def layout():
                               style={'color': '#495057', 'fontSize': '12px'})
                 ], style={'padding': '8px 12px', 'backgroundColor': '#f1f3f5', 'borderRadius': '4px', 'marginTop': '8px'})
             ], style={'marginBottom': 15}),
+
             html.Div([
                 dcc.Graph(id='insights-tweet-heatmap', style={'height': '300px'}),
                 html.Div([
@@ -90,6 +108,7 @@ def layout():
                               style={'color': '#495057', 'fontSize': '12px'})
                 ], style={'padding': '8px 12px', 'backgroundColor': '#f1f3f5', 'borderRadius': '4px', 'marginTop': '8px'})
             ]),
+
             html.Div([
                 html.H5("📊 24小时平均推文分布", style={'marginTop': 20, 'marginBottom': 10}),
                 dcc.Graph(id='insights-hourly-distribution', style={'height': '250px'}),
@@ -103,9 +122,9 @@ def layout():
                               style={'color': '#495057', 'fontSize': '12px'})
                 ], style={'padding': '8px 12px', 'backgroundColor': '#f1f3f5', 'borderRadius': '4px', 'marginTop': '8px'})
             ])
-        ], style={'marginBottom': 30}),
+        ], id='insights-tab-tweets', style={'display': 'none'}),
 
-        # ---- 命中区间分布 + 相关性 ----
+        # ============ Tab 3：命中与相关性 ============
         html.Div([
             html.Div([
                 html.H4("📊 命中区间分布", style={'marginBottom': 10}),
@@ -119,7 +138,8 @@ def layout():
                     html.Span("柱子越高说明该区间“达成”的概率越大，可以优先跟踪这些区间。",
                               style={'color': '#495057', 'fontSize': '12px'})
                 ], style={'padding': '8px 12px', 'backgroundColor': '#f1f3f5', 'borderRadius': '4px', 'marginTop': '8px'})
-            ], className='insights-half', style={'width': '48%', 'display': 'inline-block', 'verticalAlign': 'top'}),
+            ], style={'marginBottom': 20}),
+
             html.Div([
                 html.H4("📈 价格 vs 推文相关性", style={'marginBottom': 10}),
                 dcc.Graph(id='insights-correlation', style={'height': '300px'}),
@@ -132,28 +152,49 @@ def layout():
                     html.Span("如果相关性显著为正，说明推文增多时价格倾向于上涨，可作为策略参考。",
                               style={'color': '#495057', 'fontSize': '12px'})
                 ], style={'padding': '8px 12px', 'backgroundColor': '#f1f3f5', 'borderRadius': '4px', 'marginTop': '8px'})
-            ], className='insights-half', style={'width': '48%', 'display': 'inline-block', 'float': 'right', 'verticalAlign': 'top'})
-        ], style={'marginBottom': 20}),
+            ], style={'marginBottom': 20}),
 
-        # ---- 各区间平均存活时长 ----
-        html.Div([
-            html.H4("⏱️ 各区间平均存活时长", style={'marginBottom': 10}),
-            html.P("每个推文区间从事件开始到最终结算的平均时长（小时），柱子上显示该区间的样本数量",
-                   style={'color': '#6c757d', 'fontSize': '13px', 'marginTop': 0}),
-            dcc.Graph(id='insights-survival-chart', style={'height': '300px'}),
             html.Div([
-                html.Strong("📖 如何阅读："),
-                html.Span("每个区间代表一个推文区间，柱子高度表示该区间内所有市场从事件开始到停止价格更新的平均时长（小时）。柱子上显示该区间的市场数量。",
-                          style={'color': '#495057', 'fontSize': '12px'}),
-                html.Br(),
-                html.Strong("💡 统计意义："),
-                html.Span("存活时长反映了该区间市场活跃期的长短。存活时长长的区间可能价格波动持续较久，适合长线策略；存活时长短的区间可能价格波动短暂，适合短线操作。",
-                          style={'color': '#495057', 'fontSize': '12px'})
-            ], style={'padding': '8px 12px', 'backgroundColor': '#f1f3f5', 'borderRadius': '4px', 'marginTop': '8px'})
-        ], style={'marginBottom': 20}),
+                html.H4("⏱️ 各区间平均存活时长", style={'marginBottom': 10}),
+                html.P("每个推文区间从事件开始到最终结算的平均时长（小时），柱子上显示该区间的样本数量",
+                       style={'color': '#6c757d', 'fontSize': '13px', 'marginTop': 0}),
+                dcc.Graph(id='insights-survival-chart', style={'height': '300px'}),
+                html.Div([
+                    html.Strong("📖 如何阅读："),
+                    html.Span("每个区间代表一个推文区间，柱子高度表示该区间内所有市场从事件开始到停止价格更新的平均时长（小时）。柱子上显示该区间的市场数量。",
+                              style={'color': '#495057', 'fontSize': '12px'}),
+                    html.Br(),
+                    html.Strong("💡 统计意义："),
+                    html.Span("存活时长反映了该区间市场活跃期的长短。存活时长长的区间可能价格波动持续较久，适合长线策略；存活时长短的区间可能价格波动短暂，适合短线操作。",
+                              style={'color': '#495057', 'fontSize': '12px'})
+                ], style={'padding': '8px 12px', 'backgroundColor': '#f1f3f5', 'borderRadius': '4px', 'marginTop': '8px'})
+            ]),
+        ], id='insights-tab-hits', style={'display': 'none'}),
 
-        # ---- 推文探索器 ----
-        render_explorer_section(),
+        # ============ Tab 4：推文探索器 ============
+        html.Div([
+            render_explorer_section(),
+        ], id='insights-tab-explorer', style={'display': 'none'}),
 
         dcc.Store(id='insights-store', data={}),
     ], style={'padding': '0 20px'})
+
+
+# ========== Tab 切换回调 ==========
+
+@callback(
+    Output('insights-tab-overview', 'style'),
+    Output('insights-tab-tweets', 'style'),
+    Output('insights-tab-hits', 'style'),
+    Output('insights-tab-explorer', 'style'),
+    Input('insights-tabs', 'value'),
+)
+def switch_insights_tab(tab):
+    show = {'display': 'block'}
+    hide = {'display': 'none'}
+    return (
+        show if tab == 'overview' else hide,
+        show if tab == 'tweets' else hide,
+        show if tab == 'hits' else hide,
+        show if tab == 'explorer' else hide,
+    )
