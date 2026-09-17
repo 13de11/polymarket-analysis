@@ -12,7 +12,7 @@ server = app.server
 from src.dash_app.pages import price_tweet_analysis
 from src.dash_app.pages import home
 from src.dash_app.pages import insights_dashboard
-from src.dash_app.pages import prediction_backtest
+from src.dash_app.pages import backtest
 from src.dash_app.components.params_panel import register_params_callbacks
 
 app.layout = html.Div([
@@ -103,7 +103,7 @@ def display_page(pathname):
     elif pathname == '/insights':
         return insights_dashboard.layout()
     elif pathname == '/backtest':
-        return prediction_backtest.layout()
+        return backtest.layout()
     else:
         return home.layout()
 
