@@ -93,6 +93,7 @@ def update_series_label(series):
     return labels.get(series, '当前显示: 7天推文事件')
 
 
+
 @callback(
     Output('page-content', 'children'),
     Input('url', 'pathname')

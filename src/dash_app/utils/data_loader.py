@@ -180,17 +180,15 @@ def get_target_market(event_id: str):
     return target.to_dict()
 
 
-def get_target_markets_batch(event_ids: list) -> dict:
-    """批量查询多个事件的命中市场，返回 {event_id: market_dict}
-
-    优化：一次 SQL 查所有事件，Python 里分组取最大值。
-    """
+@lru_cache(maxsize=8)
+def _get_target_markets_batch_cached(event_ids_tuple: tuple, cache_key: str) -> dict:
+    """内部：带缓存的批量查询（event_ids_tuple 用于哈希）"""
+    event_ids = list(event_ids_tuple)
     if not event_ids:
         return {}
 
     placeholders = ','.join(['?'] * len(event_ids))
 
-    # 一次查出所有市场的价格（取每个市场的最新价）
     markets_query = f"""
         WITH latest_prices AS (
             SELECT 
@@ -217,7 +215,6 @@ def get_target_markets_batch(event_ids: list) -> dict:
     if markets_df.empty:
         return {}
 
-    # 按事件分组，取价格最高的市场
     result = {}
     for event_id, group in markets_df.groupby('event_id'):
         group = group.dropna(subset=['price_last'])
@@ -227,6 +224,21 @@ def get_target_markets_batch(event_ids: list) -> dict:
         result[event_id] = best.to_dict()
 
     return result
+
+
+def get_target_markets_batch(event_ids: list) -> dict:
+    """批量查询多个事件的命中市场，返回 {event_id: market_dict}
+
+    带缓存：同一天内相同 event_ids 只查一次。
+    """
+    if not event_ids:
+        return {}
+
+    from datetime import date
+    cache_key = date.today().isoformat()
+    ids_tuple = tuple(sorted(event_ids))
+    cached = _get_target_markets_batch_cached(ids_tuple, cache_key)
+    return dict(cached)
 
 def get_price_data_for_market(market_id: str, start_ts=None, end_ts=None):
     """获取单个市场的价格数据"""

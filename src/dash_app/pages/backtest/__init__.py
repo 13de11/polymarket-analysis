@@ -193,6 +193,8 @@ def layout():
 def render_tab_content(tab_name, cached_result, series, params, preview_clicks, run_clicks):
     """根据选中的 Tab 和参数渲染内容"""
 
+    import time
+    _t0 = time.time()
     # ===== 信号预览 Tab =====
     if tab_name == 'preview':
         if not params or not params.get('market_id'):
@@ -252,6 +254,7 @@ def render_tab_content(tab_name, cached_result, series, params, preview_clicks, 
 
         return render_sensitivity_tab(params), "配置参数后点击「运行分析」"
 
+    print(f"🔄 render_tab_content({tab_name}): {time.time() - _t0:.2f}s")
     # 默认情况（不应该发生）
     return html.Div(), ""
 

@@ -42,7 +42,6 @@ def create_params_panel(default_event_id=None, series='7d'):
         event_options.append({'label': label, 'value': row['id']})
 
     default_event = default_event_id or (events_df.iloc[-1]['id'] if not events_df.empty else None)
-
     return html.Div([
 
         # ========== 标题 ==========
