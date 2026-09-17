@@ -307,7 +307,6 @@ def render_tab_content(tab_name, cached_result, series, params, preview_clicks, 
                 'result') == '亏损' else '#f39c12'
             entry_time = t.get('entry_time', '')
             exit_time = t.get('exit_time', '')
-            # 处理 pd.Timestamp 或 ISO 字符串
             if hasattr(entry_time, 'strftime'):
                 entry_time = entry_time.strftime('%Y-%m-%d %H:%M')
             elif isinstance(entry_time, str) and 'T' in entry_time:
@@ -316,12 +315,25 @@ def render_tab_content(tab_name, cached_result, series, params, preview_clicks, 
                 exit_time = exit_time.strftime('%Y-%m-%d %H:%M')
             elif isinstance(exit_time, str) and 'T' in exit_time:
                 exit_time = exit_time.replace('T', ' ')[:16]
+
+            # 份数显示：期望/实际
+            actual_shares = t.get('shares', 0)
+            desired_shares = t.get('desired_shares', actual_shares)
+            is_partial = t.get('is_partial', False)
+            if is_partial:
+                shares_display = f"{desired_shares:.2f} / {actual_shares:.2f}"
+                shares_style = {'color': '#e74c3c', 'fontWeight': 'bold'}
+            else:
+                shares_display = f"{actual_shares:.2f}"
+                shares_style = {}
+
             table_rows.append(html.Tr([
                 html.Td(str(t.get('trade_id', ''))),
                 html.Td(entry_time),
                 html.Td(exit_time),
                 html.Td(f"{t.get('entry_price', 0):.4f}"),
                 html.Td(f"{t.get('exit_price', 0):.4f}"),
+                html.Td(shares_display, style=shares_style),
                 html.Td(f"${t.get('profit', 0):.2f}"),
                 html.Td(f"{t.get('profit_pct', 0):.2f}%"),
                 html.Td(f"{t.get('hold_hours', 0):.1f}h" if t.get('hold_hours') else ''),
@@ -334,8 +346,8 @@ def render_tab_content(tab_name, cached_result, series, params, preview_clicks, 
                 html.Table([
                     html.Thead(html.Tr([
                         html.Th('#'), html.Th('开仓时间'), html.Th('平仓时间'),
-                        html.Th('开仓价'), html.Th('平仓价'), html.Th('盈亏($)'),
-                        html.Th('盈亏(%)'), html.Th('持仓时间'), html.Th('结果')
+                        html.Th('开仓价'), html.Th('平仓价'), html.Th('份数(期望/实际)'),
+                        html.Th('盈亏($)'), html.Th('盈亏(%)'), html.Th('持仓时间'), html.Th('结果')
                     ])),
                     html.Tbody(table_rows)
                 ], style={'width': '100%', 'borderCollapse': 'collapse', 'fontSize': '13px'})

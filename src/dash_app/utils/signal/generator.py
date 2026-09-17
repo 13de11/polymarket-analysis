@@ -103,6 +103,8 @@ class DirectionSignalGenerator:
             total_estimate = row['total_estimate']
 
             # 动量修正
+            # 注意：prev_total_estimate 保存的是"已修正后"的值，
+            # 所以修正系数是递归的（当前修正受之前修正影响）。这是设计意图。
             if self.momentum_enable and self.prev_total_estimate is not None:
                 rate_change = self._calculate_momentum(df, idx)
                 adjustment = 1 + self.momentum_coef * rate_change
@@ -140,15 +142,17 @@ class DirectionSignalGenerator:
         return (df['avg_rate'].iloc[idx] - recent_avg) / recent_avg
 
     def _determine_signal(self, distance: float, price: float, idx: int) -> Tuple[str, int]:
+        # 注意：self.prev_distance 在函数内和调用处（generate_signals 循环末尾）都会更新。
+        # 行为正确（最终值一致），但逻辑上冗余。
         # 容差过滤
         if distance <= self.capacity:
-            self.prev_price = price  # ← 也要更新
+            self.prev_price = price
             return '→', 0
 
         # 首次判断
         if self.prev_distance is None:
             self.prev_distance = distance
-            self.prev_price = price  # ← 更新
+            self.prev_price = price
             return '→', 0
 
         # 噪声过滤

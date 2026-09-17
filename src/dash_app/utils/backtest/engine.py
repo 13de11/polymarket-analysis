@@ -135,37 +135,49 @@ class BacktestEngine:
         if price <= 0:
             return
 
-        # 计算买入数量
+        # 计算期望买入数量
         if self.position_mode == 'fixed_amount':
-            # 固定金额：用投入金额除以价格
-            amount = min(self.position_size, self.cash)
-            shares = amount / price
+            desired_amount = min(self.position_size, self.cash)
+            desired_shares = desired_amount / price
         else:  # fixed_shares
-            shares = self.position_size
-            amount = shares * price
+            desired_shares = self.position_size
+            desired_amount = desired_shares * price
 
-        # 检查是否足够现金
-        if amount > self.cash:
-            shares = self.cash / price
-            amount = self.cash
+        # 实际买入（考虑现金约束）
+        if self.position_mode == 'fixed_amount':
+            amount = desired_amount
+            shares = desired_shares
+        else:  # fixed_shares
+            if desired_amount > self.cash:
+                shares = self.cash / price
+                amount = self.cash
+            else:
+                shares = desired_shares
+                amount = desired_amount
 
         if shares <= 0:
             return
 
+        # 判断是否部分成交
+        is_partial = abs(shares - desired_shares) > 1e-6
+
         # 执行买入
         self.cash -= amount
         self.position += shares
+        self.position_cost = price
         self.is_holding = True
         self.entry_price = price
         self.entry_time = timestamp
         self.cumulative_trades += 1
 
-        # 记录交易（开仓部分）
+        # 记录交易
         self.trades.append({
             'trade_id': self.cumulative_trades,
             'entry_time': timestamp,
             'entry_price': price,
             'shares': shares,
+            'desired_shares': desired_shares,
+            'is_partial': is_partial,
             'amount': amount,
             'exit_time': None,
             'exit_price': None,

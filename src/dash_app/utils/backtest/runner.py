@@ -101,6 +101,7 @@ def run_backtest(params: dict, series='7d'):
         if signal_df.empty:
             return None
 
+
         engine = BacktestEngine(
             initial_capital=params.get('initial_capital', 100),
             position_mode=params.get('position_mode', 'fixed_amount'),

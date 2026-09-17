@@ -111,8 +111,9 @@ def create_params_panel(default_event_id=None, series='7d'):
                     html.Div([
                         dcc.Input(
                             id='backtest-window-custom',
-                            type='number',
+                            type='text',
                             placeholder='自定义小时数',
+                            debounce=True,
                             style={'width': '60%', 'display': 'inline-block', 'marginTop': '4px'}
                         ),
                         html.Span(" 小时", style={'fontSize': '12px', 'color': '#7f8c8d', 'marginLeft': '4px'})
@@ -262,10 +263,9 @@ def create_params_panel(default_event_id=None, series='7d'):
                         html.Label("初始资金:", style={'fontSize': '12px'}),
                         dcc.Input(
                             id='backtest-initial-capital',
-                            type='number',
-                            value=100,
-                            step=10,
-                            min=1,
+                            type='text',
+                            value='100',
+                            debounce=True,
                             style={'width': '100%', 'padding': '4px', 'fontSize': '12px'}
                         ),
                         html.Div("回测起始资金（美元）",
@@ -292,10 +292,9 @@ def create_params_panel(default_event_id=None, series='7d'):
                         html.Label("每次投入:", style={'fontSize': '12px'}),
                         dcc.Input(
                             id='backtest-position-size',
-                            type='number',
-                            value=10,
-                            step=1,
-                            min=0.1,
+                            type='text',
+                            value='10',
+                            debounce=True,
                             style={'width': '100%', 'padding': '4px', 'fontSize': '12px'}
                         ),
                         html.Div("固定金额模式下=美元数；固定份额模式下=份数",
@@ -525,12 +524,13 @@ def register_params_callbacks(app):
             'momentum_enable': momentum_enable,
             'momentum_coef': momentum_coef or 0.10,
             'signal_mode': signal_mode or 'start',
-            'initial_capital': initial_capital or 100,
+            'initial_capital': int(initial_capital) if initial_capital else 100,
             'position_mode': position_mode or 'fixed_amount',
-            'position_size': position_size or 10,
+            'position_size': float(position_size) if position_size else 10,
             'backtest_range': backtest_range or 'full',
             'backtest_range_custom': backtest_range_custom or [0, 100],
         }
+
         return params
 
     # ===== 窗口模式切换：自定义输入框显示/隐藏 =====
