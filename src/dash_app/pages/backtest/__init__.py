@@ -8,7 +8,7 @@ from dash import html, dcc, Input, Output, State, callback, no_update
 import plotly.graph_objects as go
 import pandas as pd
 
-from src.dash_app.components.params_panel import create_params_panel
+from src.dash_app.pages.backtest.params_panel import create_params_panel
 from src.dash_app.utils.backtest.runner import run_backtest
 from src.dash_app.pages.backtest.tabs.preview import render_preview_tab
 from src.dash_app.pages.backtest.tabs.overview import render_overview_tab

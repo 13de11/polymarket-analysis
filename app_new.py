@@ -13,7 +13,7 @@ from src.dash_app.pages import price_tweet_analysis
 from src.dash_app.pages import home
 from src.dash_app.pages import insights_dashboard
 from src.dash_app.pages import backtest
-from src.dash_app.components.params_panel import register_params_callbacks
+from src.dash_app.pages.backtest.params_panel import register_params_callbacks
 
 app.layout = html.Div([
     dcc.Location(id='url'),
