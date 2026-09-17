@@ -25,6 +25,46 @@ def layout():
                    style={'color': '#6c757d', 'fontSize': '14px', 'marginTop': 0}),
         ], style={'marginBottom': 15}),
 
+        html.Details([
+            html.Summary("📖 方向判断逻辑详解（点击展开）", style={
+                'cursor': 'pointer', 'fontWeight': 'bold', 'padding': '10px 15px',
+                'backgroundColor': '#e8f4fd', 'borderRadius': '6px',
+                'border': '1px solid #b8d4e8', 'fontSize': '14px'
+            }),
+            html.Div([
+                html.H5("🎯 核心思路", style={'marginTop': '10px'}),
+                html.P("用「推文热度」估算市场参与度，通过「估算总量距中位数的距离变化」推断价格方向。"),
+                html.P("直觉：如果推文速度在加快，说明市场热度上升，目标区间更可能被触及，价格倾向上涨。"),
+
+                html.H5("📐 五步判断流程", style={'marginTop': '15px'}),
+                html.Ol([
+                    html.Li([html.Strong("估算总量"), html.Span(" = 平均推文速率 × 剩余小时数")]),
+                    html.Li([html.Strong("距离"), html.Span(" = |估算总量 − 市场中位数|")]),
+                    html.Li([html.Strong("容差过滤"), html.Span("：距离 ≤ 容差 → 直接判定为「看平」（→）")]),
+                    html.Li([html.Strong("噪音过滤"),
+                             html.Span("：距离变动 ≤ 距离阈值 且 价格变动 ≤ 价格阈值 → 不触发新信号")]),
+                    html.Li([html.Strong("方向判断"), html.Span("：距离变小 → ↑；变大 → ↓；不变 → →")]),
+                ]),
+
+                html.H5("🛡️ 惯性保护", style={'marginTop': '15px'}),
+                html.P("连续 ≥ 惯性小时 无有效信号 → 强制输出 →（看平），避免长期持有单一方向。"),
+
+                html.H5("⚡ 动量修正", style={'marginTop': '15px'}),
+                html.P(
+                    "根据最近 6 小时推文速率变化调整估算总量。调整系数 = 1 + 动量系数 × rateChange，限制在 0.8~1.2 倍。"),
+
+                html.H5("🎨 信号模式（仅影响图表显示）", style={'marginTop': '15px'}),
+                html.Ul([
+                    html.Li("full：显示每个连续段的起点和终点"),
+                    html.Li("start：只显示起点（推荐）"),
+                    html.Li("end：只显示终点"),
+                ]),
+
+                html.H5("📊 方向准确率", style={'marginTop': '15px'}),
+                html.P("信号发出 → 到下一个反向信号出现，看这段区间内价格是否朝预测方向变化。"),
+            ], style={'padding': '15px 20px', 'backgroundColor': '#f8f9fa', 'borderRadius': '6px'})
+        ], style={'marginBottom': '15px'}),
+
         # ========== 主布局：左侧参数 + 右侧结果 ==========
         html.Div([
             # ---- 左侧：参数面板 ----
