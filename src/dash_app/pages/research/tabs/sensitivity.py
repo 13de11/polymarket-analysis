@@ -1,8 +1,5 @@
 """
-敏感性分析 Tab
-- 敏感性分析 UI（参数选择 + 范围输入 + 运行按钮）
-- 敏感性分析回调
-- 敏感性曲线图
+策略研究 - 敏感性分析 Tab
 """
 
 from dash import html, dcc, Input, Output, State, callback
@@ -13,23 +10,22 @@ import numpy as np
 from src.dash_app.utils.analysis.sensitivity import SensitivityAnalysis
 
 
-def render_sensitivity_tab(params):
-    """渲染敏感性分析 Tab 的 UI"""
+def render_sensitivity_tab():
+    """渲染敏感性分析 Tab UI"""
     return html.Div([
-        html.H5("📊 参数敏感性分析", style={'margin': '10px 0'}),
         html.Div([
             html.P("分析参数变化对回测结果的影响：", style={'fontSize': '14px'}),
             html.Div([
                 html.Div([
                     html.Label("分析参数:", style={'fontWeight': 'bold'}),
                     dcc.Dropdown(
-                        id='sensitivity-param',
+                        id='research-sensitivity-param',
                         options=[
-                            {'label': '价格阈值 (price_threshold)', 'value': 'price_threshold'},
-                            {'label': '容差 (capacity)', 'value': 'capacity'},
-                            {'label': '距离阈值 (distance_threshold)', 'value': 'distance_threshold'},
-                            {'label': '惯性 (inertia)', 'value': 'inertia'},
-                            {'label': '动量系数 (momentum_coef)', 'value': 'momentum_coef'},
+                            {'label': '价格阈值', 'value': 'price_threshold'},
+                            {'label': '容差', 'value': 'capacity'},
+                            {'label': '距离阈值', 'value': 'distance_threshold'},
+                            {'label': '惯性', 'value': 'inertia'},
+                            {'label': '动量系数', 'value': 'momentum_coef'},
                         ],
                         value='price_threshold',
                         style={'width': '100%'}
@@ -38,7 +34,7 @@ def render_sensitivity_tab(params):
                 html.Div([
                     html.Label("追踪指标:", style={'fontWeight': 'bold'}),
                     dcc.Dropdown(
-                        id='sensitivity-metric',
+                        id='research-sensitivity-metric',
                         options=[
                             {'label': '总收益率', 'value': 'total_return'},
                             {'label': '夏普比率', 'value': 'sharpe_ratio'},
@@ -53,17 +49,13 @@ def render_sensitivity_tab(params):
                     html.Label("参数范围:", style={'fontWeight': 'bold'}),
                     html.Div([
                         dcc.Input(
-                            id='sensitivity-min',
-                            type='number',
-                            value=0.001,
-                            step=0.001,
+                            id='research-sensitivity-min',
+                            type='number', value=0.001, step=0.001,
                             style={'width': '40%', 'display': 'inline-block', 'marginRight': '5px'}
                         ),
                         dcc.Input(
-                            id='sensitivity-max',
-                            type='number',
-                            value=0.02,
-                            step=0.001,
+                            id='research-sensitivity-max',
+                            type='number', value=0.02, step=0.001,
                             style={'width': '40%', 'display': 'inline-block'}
                         ),
                     ]),
@@ -73,7 +65,7 @@ def render_sensitivity_tab(params):
             ], style={'marginBottom': '15px'}),
             html.Button(
                 '🔬 运行分析',
-                id='sensitivity-run-btn',
+                id='research-sensitivity-run-btn',
                 n_clicks=0,
                 style={
                     'padding': '10px 20px',
@@ -87,12 +79,11 @@ def render_sensitivity_tab(params):
                 }
             ),
         ], style={'padding': '15px', 'backgroundColor': '#f8f9fa', 'borderRadius': '8px'}),
-        html.Div(id='sensitivity-results', style={'marginTop': '15px'}),
+        html.Div(id='research-sensitivity-results', style={'marginTop': '15px'}),
     ])
 
 
 def create_sensitivity_chart(result: Dict[str, Any]) -> go.Figure:
-    """创建敏感性分析图表"""
     fig = go.Figure()
 
     results = result['results']
@@ -107,10 +98,7 @@ def create_sensitivity_chart(result: Dict[str, Any]) -> go.Figure:
     y_vals = [r['metric_value'] for r in valid]
 
     fig.add_trace(go.Scatter(
-        x=x_vals,
-        y=y_vals,
-        mode='lines+markers',
-        name='敏感性曲线',
+        x=x_vals, y=y_vals, mode='lines+markers', name='敏感性曲线',
         line=dict(color='#00b894', width=2),
         marker=dict(size=8, color='#00b894'),
         hovertemplate='参数: %{x:.4f}<br>指标: %{y:.2f}<extra></extra>'
@@ -119,13 +107,9 @@ def create_sensitivity_chart(result: Dict[str, Any]) -> go.Figure:
     if result.get('best_value'):
         best = result['best_value']
         fig.add_annotation(
-            x=best['param_value'],
-            y=best['metric_value'],
+            x=best['param_value'], y=best['metric_value'],
             text=f"最优 {best['param_value']:.4f}",
-            showarrow=True,
-            arrowhead=2,
-            ax=20,
-            ay=-30,
+            showarrow=True, arrowhead=2, ax=20, ay=-30,
             font=dict(color='#00b894', size=12)
         )
 
@@ -149,21 +133,21 @@ def create_sensitivity_chart(result: Dict[str, Any]) -> go.Figure:
 
 
 @callback(
-    Output('sensitivity-results', 'children'),
-    Input('sensitivity-run-btn', 'n_clicks'),
-    State('backtest-params-store', 'data'),
-    State('sensitivity-param', 'value'),
-    State('sensitivity-metric', 'value'),
-    State('sensitivity-min', 'value'),
-    State('sensitivity-max', 'value'),
+    Output('research-sensitivity-results', 'children'),
+    Input('research-sensitivity-run-btn', 'n_clicks'),
+    State('research-params-store', 'data'),
+    State('research-sensitivity-param', 'value'),
+    State('research-sensitivity-metric', 'value'),
+    State('research-sensitivity-min', 'value'),
+    State('research-sensitivity-max', 'value'),
     State('series-selector', 'value'),
 )
-def run_sensitivity_analysis(n_clicks, params, param_name, metric_key, min_val, max_val, series):
+def run_research_sensitivity(n_clicks, params, param_name, metric_key, min_val, max_val, series):
     if n_clicks == 0:
         return html.Div()
 
     if not params or not params.get('market_id'):
-        return html.Div("请先选择事件和市场")
+        return html.Div("请先在左侧选择事件和市场")
 
     param_values = np.linspace(min_val, max_val, 10).tolist()
     param_values = [round(v, 4) for v in param_values]

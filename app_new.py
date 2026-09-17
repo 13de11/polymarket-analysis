@@ -13,6 +13,7 @@ from src.dash_app.pages import price_tweet_analysis
 from src.dash_app.pages import home
 from src.dash_app.pages import insights as insights_dashboard
 from src.dash_app.pages import backtest
+from src.dash_app.pages import research
 from src.dash_app.pages.backtest.params_panel import register_params_callbacks
 
 app.layout = html.Div([
@@ -55,6 +56,8 @@ app.layout = html.Div([
                 html.Li(dcc.Link("📊 数据分析中心", href="/insights", id='nav-insights', className='nav-link'),
                         style={'listStyle': 'none', 'marginBottom': '4px'}),
                 html.Li(dcc.Link("📈 预测回测", href="/backtest", id='nav-backtest', className='nav-link'),
+                        style={'listStyle': 'none', 'marginBottom': '4px'}),
+                html.Li(dcc.Link("🔬 策略研究", href="/research", id='nav-research', className='nav-link'),
                         style={'listStyle': 'none', 'marginBottom': '4px'}),
             ], style={'padding': 0, 'margin': 0})
 
@@ -105,31 +108,36 @@ def display_page(pathname):
         return insights_dashboard.layout()
     elif pathname == '/backtest':
         return backtest.layout()
+    elif pathname == '/research':
+        return research.layout()
     else:
         return home.layout()
-
 
 @callback(
     Output('nav-home', 'className'),
     Output('nav-analysis', 'className'),
     Output('nav-insights', 'className'),
     Output('nav-backtest', 'className'),
+    Output('nav-research', 'className'),
     Input('url', 'pathname'),
 )
 def highlight_nav(pathname):
     base = 'nav-link'
     active = 'nav-link active'
     if pathname == '/analysis':
-        return base, active, base, base
+        return base, active, base, base, base
     elif pathname == '/insights':
-        return base, base, active, base
+        return base, base, active, base, base
     elif pathname == '/backtest':
-        return base, base, base, active
+        return base, base, base, active, base
+    elif pathname == '/research':
+        return base, base, base, base, active
     else:
-        return active, base, base, base
+        return active, base, base, base, base
 
 
 register_params_callbacks(app)
+research.register_callbacks(app)
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=8050)

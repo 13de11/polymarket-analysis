@@ -14,8 +14,6 @@ from src.dash_app.pages.backtest.tabs.preview import render_preview_tab
 from src.dash_app.pages.backtest.tabs.overview import render_overview_tab
 from src.dash_app.pages.backtest.tabs.trades import render_trades_tab
 from src.dash_app.pages.backtest.tabs.evaluation import render_evaluation
-from src.dash_app.pages.backtest.tabs.comparison import render_comparison_tab
-from src.dash_app.pages.backtest.tabs.sensitivity import render_sensitivity_tab
 
 def layout():
     return html.Div([
@@ -55,8 +53,6 @@ def layout():
                         dcc.Tab(label='📊 绩效概览', value='overview'),
                         dcc.Tab(label='📋 交易明细', value='trades'),
                         dcc.Tab(label='📈 策略评估', value='evaluation'),
-                        dcc.Tab(label='📊 策略对比', value='comparison'),
-                        dcc.Tab(label='📊 敏感性分析', value='sensitivity'),
                     ],
                     style={'marginBottom': '15px'}
                 ),
@@ -233,30 +229,6 @@ def render_tab_content(tab_name, cached_result, series, params, preview_clicks, 
 
         return render_evaluation(params, result), "✅ 策略评估已加载"
 
-
-    # ===== 策略对比 Tab =====
-    elif tab_name == 'comparison':
-        if not params or not params.get('market_id'):
-            return html.Div([
-                html.P("📊 策略对比将在此显示", style={'color': '#6c757d', 'textAlign': 'center', 'padding': '40px 0'}),
-                html.P("请选择事件和市场，配置对比策略", style={'color': '#6c757d', 'textAlign': 'center'})
-            ]), "请选择事件和市场"
-
-        return render_comparison_tab(params), "配置策略后点击「运行对比」"
-
-    elif tab_name == 'sensitivity':
-        if not params or not params.get('market_id'):
-            return html.Div([
-                html.P("📊 参数敏感性分析将在此显示",
-                       style={'color': '#6c757d', 'textAlign': 'center', 'padding': '40px 0'}),
-                html.P("请选择事件和市场，配置分析参数", style={'color': '#6c757d', 'textAlign': 'center'})
-            ]), "请选择事件和市场"
-
-        return render_sensitivity_tab(params), "配置参数后点击「运行分析」"
-
-    print(f"🔄 render_tab_content({tab_name}): {time.time() - _t0:.2f}s")
-    # 默认情况（不应该发生）
-    return html.Div(), ""
 
 @callback(
     Output('backtest-result-store', 'data'),

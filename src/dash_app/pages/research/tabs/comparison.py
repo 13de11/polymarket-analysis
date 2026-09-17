@@ -1,8 +1,5 @@
 """
-策略对比 Tab
-- 策略对比 UI（Dropdown + 运行按钮）
-- 对比回调
-- 资金曲线对比图 + 绩效对比表
+策略研究 - 策略对比 Tab
 """
 
 from dash import html, dcc, Input, Output, State, callback
@@ -13,9 +10,8 @@ import pandas as pd
 from src.dash_app.utils.comparison.engine import ComparisonEngine
 
 
-def render_comparison_tab(params):
-    """渲染策略对比 Tab 的 UI"""
-
+def render_comparison_tab():
+    """渲染策略对比 Tab UI"""
     strategy_options = [
         {'label': '方向信号 (阈值0.005)', 'value': 'dir_005'},
         {'label': '方向信号 (阈值0.01)', 'value': 'dir_01'},
@@ -23,14 +19,13 @@ def render_comparison_tab(params):
     ]
 
     return html.Div([
-        html.H5("📊 策略对比", style={'margin': '10px 0'}),
         html.Div([
             html.P("选择要对比的策略（最多3个）：", style={'fontSize': '14px'}),
             html.Div([
                 html.Div([
                     html.Label("策略A:", style={'fontWeight': 'bold'}),
                     dcc.Dropdown(
-                        id='comparison-strategy-a',
+                        id='research-comparison-a',
                         options=strategy_options,
                         value='dir_005',
                         style={'width': '100%'}
@@ -39,7 +34,7 @@ def render_comparison_tab(params):
                 html.Div([
                     html.Label("策略B:", style={'fontWeight': 'bold'}),
                     dcc.Dropdown(
-                        id='comparison-strategy-b',
+                        id='research-comparison-b',
                         options=strategy_options,
                         value='dir_01',
                         style={'width': '100%'}
@@ -48,7 +43,7 @@ def render_comparison_tab(params):
                 html.Div([
                     html.Label("策略C (可选):", style={'fontWeight': 'bold'}),
                     dcc.Dropdown(
-                        id='comparison-strategy-c',
+                        id='research-comparison-c',
                         options=[{'label': '无', 'value': None}] + strategy_options,
                         value=None,
                         style={'width': '100%'}
@@ -57,7 +52,7 @@ def render_comparison_tab(params):
             ], style={'marginBottom': '15px'}),
             html.Button(
                 '🚀 运行对比',
-                id='comparison-run-btn',
+                id='research-comparison-run-btn',
                 n_clicks=0,
                 style={
                     'padding': '10px 20px',
@@ -71,12 +66,11 @@ def render_comparison_tab(params):
                 }
             ),
         ], style={'padding': '15px', 'backgroundColor': '#f8f9fa', 'borderRadius': '8px'}),
-        html.Div(id='comparison-results', style={'marginTop': '15px'}),
+        html.Div(id='research-comparison-results', style={'marginTop': '15px'}),
     ])
 
 
 def create_comparison_chart(results: Dict[str, Any]) -> go.Figure:
-    """创建资金曲线对比图"""
     fig = go.Figure()
     colors = ['#3498db', '#e74c3c', '#2ecc71', '#f39c12', '#9b59b6']
 
@@ -104,7 +98,6 @@ def create_comparison_chart(results: Dict[str, Any]) -> go.Figure:
 
 
 def create_comparison_table(results: Dict[str, Any]) -> html.Table:
-    """创建绩效指标对比表"""
     headers = ['策略名称', '总交易次数', '胜率', '盈亏比', '总收益', '最大回撤', '夏普比率']
     rows = []
 
@@ -127,50 +120,37 @@ def create_comparison_table(results: Dict[str, Any]) -> html.Table:
 
 
 @callback(
-    Output('comparison-results', 'children'),
-    Input('comparison-run-btn', 'n_clicks'),
-    State('backtest-params-store', 'data'),
-    State('comparison-strategy-a', 'value'),
-    State('comparison-strategy-b', 'value'),
-    State('comparison-strategy-c', 'value'),
+    Output('research-comparison-results', 'children'),
+    Input('research-comparison-run-btn', 'n_clicks'),
+    State('research-params-store', 'data'),
+    State('research-comparison-a', 'value'),
+    State('research-comparison-b', 'value'),
+    State('research-comparison-c', 'value'),
     State('series-selector', 'value'),
 )
-def run_comparison(n_clicks, params, strategy_a, strategy_b, strategy_c, series):
+def run_research_comparison(n_clicks, params, a, b, c, series):
     if n_clicks == 0:
         return html.Div()
 
     if not params or not params.get('market_id'):
-        return html.Div("请先选择事件和市场")
+        return html.Div("请先在左侧选择事件和市场")
 
-    strategy_configs = []
     threshold_map = {'dir_005': 0.005, 'dir_01': 0.01, 'dir_015': 0.015}
-
-    if strategy_a:
-        strategy_configs.append({
-            'name': f'策略A (阈值{threshold_map[strategy_a]})',
-            'params': {'price_threshold': threshold_map[strategy_a]}
-        })
-    if strategy_b:
-        strategy_configs.append({
-            'name': f'策略B (阈值{threshold_map[strategy_b]})',
-            'params': {'price_threshold': threshold_map[strategy_b]}
-        })
-    if strategy_c:
-        strategy_configs.append({
-            'name': f'策略C (阈值{threshold_map[strategy_c]})',
-            'params': {'price_threshold': threshold_map[strategy_c]}
-        })
+    strategy_configs = []
+    if a:
+        strategy_configs.append({'name': f'策略A (阈值{threshold_map[a]})', 'params': {'price_threshold': threshold_map[a]}})
+    if b:
+        strategy_configs.append({'name': f'策略B (阈值{threshold_map[b]})', 'params': {'price_threshold': threshold_map[b]}})
+    if c:
+        strategy_configs.append({'name': f'策略C (阈值{threshold_map[c]})', 'params': {'price_threshold': threshold_map[c]}})
 
     results = ComparisonEngine.run_comparison(params, strategy_configs, series)
 
     if not results:
         return html.Div("对比运行失败，请检查参数")
 
-    fig = create_comparison_chart(results)
-    table = create_comparison_table(results)
-
     return html.Div([
-        dcc.Graph(figure=fig, style={'height': '400px'}),
+        dcc.Graph(figure=create_comparison_chart(results), style={'height': '400px'}),
         html.H5("📊 绩效指标对比", style={'margin': '15px 0 10px 0'}),
-        table,
+        create_comparison_table(results),
     ])

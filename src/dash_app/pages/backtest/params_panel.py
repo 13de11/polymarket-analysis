@@ -127,7 +127,7 @@ def create_params_panel(default_event_id=None, series='7d'):
                     ),
                 ], style={'marginBottom': '0px'}),
             ], style={'padding': '8px 0 4px 0'}),
-        ], style={'marginBottom': '12px'}),
+        ],  open=True, style={'marginBottom': '12px'}),
 
         # ========== 分组2：策略参数 ==========
         html.Details([
@@ -251,7 +251,7 @@ def create_params_panel(default_event_id=None, series='7d'):
                     ], style={'marginBottom': '0px'}),
                 ], style={'marginBottom': '0px'}),
             ], style={'padding': '8px 0 4px 0'}),
-        ], style={'marginBottom': '12px'}),
+        ],  style={'marginBottom': '12px'}),
 
         # ========== 分组4：回测执行 ==========
         html.Details([
@@ -330,7 +330,7 @@ def create_params_panel(default_event_id=None, series='7d'):
                     ], style={'display': 'inline-block', 'width': '45%'}),
                 ], style={'marginBottom': '0px'}),
             ], style={'padding': '8px 0 4px 0'}),
-        ], style={'marginBottom': '20px'}),
+        ],style={'marginBottom': '20px'}),
 
         # ========== 操作按钮 ==========
         html.Div([
