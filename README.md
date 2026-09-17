@@ -33,28 +33,56 @@ Polymarket_Analysis/
 │       └── run_all.py            # 一键全流程
 │
 ├── src/dash_app/                 # Dash 应用
-│   ├── components/
-│   │   └── params_panel.py       # 回测参数面板
 │   ├── pages/
 │   │   ├── home.py
 │   │   ├── price_tweet_analysis.py
-│   │   ├── insights_dashboard.py
-│   │   └── prediction_backtest.py
+│   │   ├── insights/             # 数据分析中心
+│   │   │   ├── layout.py
+│   │   │   ├── callbacks.py
+│   │   │   └── explorer.py
+│   │   ├── backtest/             # 预测回测
+│   │   │   ├── layout.py
+│   │   │   ├── params_panel.py
+│   │   │   └── tabs/
+│   │   │       ├── preview.py
+│   │   │       ├── overview.py
+│   │   │       ├── trades.py
+│   │   │       └── evaluation.py
+│   │   └── research/             # 策略研究
+│   │       ├── layout.py
+│   │       ├── filter_panel.py
+│   │       └── tabs/
+│   │           ├── comparison.py
+│   │           └── sensitivity.py
 │   └── utils/
 │       ├── data_loader.py        # 数据读取
 │       ├── stats_loader.py       # 统计聚合
 │       ├── signal/generator.py   # 信号生成
 │       ├── backtest/
-│       │   ├── engine.py         # 回测引擎
-│       │   └── runner.py         # 回测执行器
-│       ├── comparison/engine.py  # 策略对比
-│       ├── analysis/sensitivity.py
-│       └── metrics/calculator.py
+│       │   ├── engine.py
+│       │   ├── runner.py
+│       │   ├── prepare.py
+│       │   └── baseline.py
+│       ├── metrics/
+│       │   ├── calculator.py
+│       │   ├── accuracy.py
+│       │   └── hold_period.py
+│       ├── comparison/engine.py
+│       └── analysis/sensitivity.py
 │
 └── archives/                     # 旧项目备份（不入 git）
 ```
 
 ---
+## 📄 页面结构
+
+| 路径 | 页面 | 功能 |
+|------|------|------|
+| `/` | 首页 | 功能卡片 + 数据概览 |
+| `/analysis` | 价格-推文分析 | 事件内各市场价格与推文关系 |
+| `/insights` | 数据分析中心 | 命中模式、推文热度图谱（4 Tab） |
+| `/backtest` | 预测回测 | 单事件回测与评估（4 Tab） |
+| `/research` | 策略研究 | 策略对比与参数敏感性分析（2 Tab） |
 
 ## 🚀 快速开始
 
