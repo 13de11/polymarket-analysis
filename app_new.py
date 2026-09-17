@@ -4,7 +4,7 @@ import os
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, PROJECT_ROOT)
 
-from dash import Dash, html, dcc, callback, Input, Output, callback_context
+from dash import Dash, html, dcc, callback, Input, Output
 
 app = Dash(__name__, suppress_callback_exceptions=True)
 server = app.server
@@ -48,10 +48,14 @@ app.layout = html.Div([
             }),
 
             html.Ul([
-                html.Li(dcc.Link("🏠 首页", href="/", id='nav-home', className='nav-link'), style={'listStyle': 'none', 'marginBottom': '4px'}),
-                html.Li(dcc.Link("📈 价格-推文分析", href="/analysis", id='nav-analysis', className='nav-link'), style={'listStyle': 'none', 'marginBottom': '4px'}),
-                html.Li(dcc.Link("📊 数据分析中心", href="/insights", id='nav-insights', className='nav-link'), style={'listStyle': 'none', 'marginBottom': '4px'}),
-                html.Li(dcc.Link("📈 预测回测", href="/backtest", id='nav-backtest', className='nav-link'), style={'listStyle': 'none', 'marginBottom': '4px'}),
+                html.Li(dcc.Link("🏠 首页", href="/", id='nav-home', className='nav-link'),
+                        style={'listStyle': 'none', 'marginBottom': '4px'}),
+                html.Li(dcc.Link("📈 价格-推文分析", href="/analysis", id='nav-analysis', className='nav-link'),
+                        style={'listStyle': 'none', 'marginBottom': '4px'}),
+                html.Li(dcc.Link("📊 数据分析中心", href="/insights", id='nav-insights', className='nav-link'),
+                        style={'listStyle': 'none', 'marginBottom': '4px'}),
+                html.Li(dcc.Link("📈 预测回测", href="/backtest", id='nav-backtest', className='nav-link'),
+                        style={'listStyle': 'none', 'marginBottom': '4px'}),
             ], style={'padding': 0, 'margin': 0})
 
         ], className='sidebar', style={
@@ -103,6 +107,7 @@ def display_page(pathname):
     else:
         return home.layout()
 
+
 @callback(
     Output('nav-home', 'className'),
     Output('nav-analysis', 'className'),
@@ -119,8 +124,9 @@ def highlight_nav(pathname):
         return base, base, active, base
     elif pathname == '/backtest':
         return base, base, base, active
-    else:  # '/' 或未知路径
+    else:
         return active, base, base, base
+
 
 register_params_callbacks(app)
 

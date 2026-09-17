@@ -10,7 +10,6 @@
 import dash
 from dash import html, dcc, Input, Output, State, callback, no_update
 import pandas as pd
-import numpy as np
 
 from src.dash_app.utils.data_loader import (
     get_elon_tweet_events,
@@ -21,15 +20,19 @@ from src.dash_app.utils.data_loader import (
     get_event_remaining_hours,
     get_market_median,
     get_event_time_range,
+    get_target_markets_batch,
 )
 
 
 def create_params_panel(default_event_id=None, series='7d'):
     """创建完整的参数配置面板"""
     events_df = get_elon_tweet_events(series)  # 传入 series
+    event_ids = events_df['id'].tolist()
+    targets_map = get_target_markets_batch(event_ids)   # ← 批量查
+
     event_options = []
     for _, row in events_df.iterrows():
-        target = get_target_market(row['id'])
+        target = targets_map.get(row['id'])   # ← 从字典取
         if target:
             r_start = int(target['range_start'])
             r_end = int(target['range_end']) if target['range_end'] and not pd.isna(target['range_end']) else '∞'
@@ -386,9 +389,12 @@ def register_params_callbacks(app):
     # ===== 回测区间切换：自定义滑块显示/隐藏 =====
     @app.callback(
         Output('backtest-range-custom-container', 'style'),
-        Input('backtest-range', 'value')
+        Input('backtest-range', 'value'),
+        Input('url', 'pathname'),
     )
-    def toggle_custom_range(range_type):
+    def toggle_custom_range(range_type, pathname):
+        if pathname != '/backtest':
+            return no_update
         if range_type == 'custom':
             return {'display': 'block', 'marginTop': '8px'}
         return {'display': 'none', 'marginTop': '8px'}
@@ -401,7 +407,6 @@ def register_params_callbacks(app):
         Input('url', 'pathname'),
     )
     def update_markets(event_id, pathname):
-        from dash import no_update
         if pathname != '/backtest':
             return no_update, no_update
 
@@ -431,7 +436,6 @@ def register_params_callbacks(app):
     )
     def update_backtest_events_on_series_change(series, pathname):
         """当系列切换时，重新生成事件列表"""
-        from dash import no_update
         if pathname != '/backtest':
             return no_update, no_update
 
@@ -439,9 +443,12 @@ def register_params_callbacks(app):
         if events_df.empty:
             return [], None
 
+        event_ids = events_df['id'].tolist()
+        targets_map = get_target_markets_batch(event_ids)
+
         event_options = []
         for _, row in events_df.iterrows():
-            target = get_target_market(row['id'])
+            target = targets_map.get(row['id'])
             if target:
                 r_start = int(target['range_start'])
                 r_end = int(target['range_end']) if target['range_end'] and not pd.isna(target['range_end']) else '∞'

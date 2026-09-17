@@ -180,6 +180,54 @@ def get_target_market(event_id: str):
     return target.to_dict()
 
 
+def get_target_markets_batch(event_ids: list) -> dict:
+    """批量查询多个事件的命中市场，返回 {event_id: market_dict}
+
+    优化：一次 SQL 查所有事件，Python 里分组取最大值。
+    """
+    if not event_ids:
+        return {}
+
+    placeholders = ','.join(['?'] * len(event_ids))
+
+    # 一次查出所有市场的价格（取每个市场的最新价）
+    markets_query = f"""
+        WITH latest_prices AS (
+            SELECT 
+                m.event_id,
+                m.id as market_id,
+                m.id,
+                m.slug,
+                m.range_start,
+                m.range_end,
+                m.is_plus,
+                p.price_last,
+                p.hour_start_utc,
+                ROW_NUMBER() OVER (
+                    PARTITION BY m.id 
+                    ORDER BY p.hour_start_utc DESC
+                ) as rn
+            FROM markets m
+            JOIN price_hourly p ON m.id = p.market_id
+            WHERE m.event_id IN ({placeholders})
+        )
+        SELECT * FROM latest_prices WHERE rn = 1
+    """
+    markets_df = run_query(markets_query, tuple(event_ids))
+    if markets_df.empty:
+        return {}
+
+    # 按事件分组，取价格最高的市场
+    result = {}
+    for event_id, group in markets_df.groupby('event_id'):
+        group = group.dropna(subset=['price_last'])
+        if group.empty:
+            continue
+        best = group.sort_values('price_last', ascending=False).iloc[0]
+        result[event_id] = best.to_dict()
+
+    return result
+
 def get_price_data_for_market(market_id: str, start_ts=None, end_ts=None):
     """获取单个市场的价格数据"""
     query = """

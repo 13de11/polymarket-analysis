@@ -13,8 +13,8 @@ from src.dash_app.utils.data_loader import (
     get_target_market,
     get_price_data,
     get_tweet_data,
+    get_target_markets_batch,
 )
-
 
 def layout():
     return html.Div([
@@ -60,7 +60,6 @@ def layout():
 
         # ========== 筛选区域 ==========
         html.Div([
-            # 事件选择器
             html.Div([
                 html.Label("选择事件:", style={'fontWeight': 'bold', 'fontSize': '14px'}),
                 dcc.Dropdown(
@@ -71,7 +70,6 @@ def layout():
                 ),
             ], style={'width': '40%', 'display': 'inline-block', 'paddingRight': 15, 'verticalAlign': 'top'}),
 
-            # 价格类型切换
             html.Div([
                 html.Label("价格类型:", style={'fontWeight': 'bold', 'fontSize': '14px'}),
                 dcc.RadioItems(
@@ -86,7 +84,6 @@ def layout():
                 ),
             ], style={'width': '20%', 'display': 'inline-block', 'verticalAlign': 'top'}),
 
-            # 市场选择提示
             html.Div([
                 html.Label("默认显示:", style={'fontWeight': 'bold', 'fontSize': '14px'}),
                 html.Div([
@@ -194,16 +191,20 @@ def layout():
 )
 def update_events(series, pathname):
     if pathname != '/analysis':
-        return no_update, no_update   # ← 不在本页，不动
+        return no_update, no_update
+
 
     events_df = get_elon_tweet_events(series)
 
     if events_df.empty:
         return [], None
 
+    event_ids = events_df['id'].tolist()
+    targets_map = get_target_markets_batch(event_ids)
+
     event_options = []
     for _, row in events_df.iterrows():
-        target = get_target_market(row['id'])
+        target = targets_map.get(row['id'])
         if target:
             r_start = int(target['range_start'])
             r_end = int(target['range_end']) if target['range_end'] and not pd.isna(target['range_end']) else '∞'
@@ -231,6 +232,7 @@ def update_markets(event_id, pathname):
 
     if not event_id:
         return [], [], {}, ""
+
 
     markets_df = get_markets_by_event(event_id)
 
@@ -292,6 +294,7 @@ def update_chart(event_id, selected_market_ids, price_type, target_info, pathnam
 
     price_df = get_price_data(selected_market_ids)
 
+
     if price_df.empty:
         return go.Figure(), html.Div("该市场暂无价格数据")
 
@@ -305,6 +308,7 @@ def update_chart(event_id, selected_market_ids, price_type, target_info, pathnam
     price_col = price_type
 
     markets_df = get_markets_by_event(event_id)
+
     market_names = {}
     for _, row in markets_df.iterrows():
         r_start = int(row['range_start'])
@@ -355,7 +359,6 @@ def update_chart(event_id, selected_market_ids, price_type, target_info, pathnam
         )
 
     if not tweet_df.empty:
-        # 预先算累计推文（用于 hover 显示）
         tweet_df['cumsum'] = tweet_df['tweet_count'].cumsum()
 
         fig.add_trace(
