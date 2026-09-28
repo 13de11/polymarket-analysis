@@ -135,23 +135,31 @@ def calculate_sharpe_ratio(equity_curve: List[Dict]) -> float:
 
 def format_metrics_for_display(metrics: Dict) -> Dict:
     """
-    格式化指标以便在Dash卡片中显示
+    格式化指标以便在 Dash 卡片中显示
 
-    Returns:
-        dict: 包含格式化的字符串
+    兼容两种 metrics 来源：
+    - engine._calculate_metrics（avg_profit / avg_loss）
+    - calculator.calculate_metrics_from_trades（avg_win / avg_loss / win_count / loss_count）
     """
+    def _get(*keys, default=0):
+        for k in keys:
+            v = metrics.get(k)
+            if v is not None:
+                return v
+        return default
+
     return {
-        '总交易次数': str(metrics.get('total_trades', 0)),
-        '胜率': f"{metrics.get('win_rate', 0):.1f}%",
-        '盈亏比': f"{metrics.get('profit_factor', 0):.2f}",
-        '总盈亏': f"${metrics.get('total_profit', 0):.2f}",
-        '平均盈利': f"${metrics.get('avg_win', 0):.2f}",
-        '平均亏损': f"${metrics.get('avg_loss', 0):.2f}",
-        '最大盈利': f"${metrics.get('max_profit', 0):.2f}",
-        '最大亏损': f"${metrics.get('max_loss', 0):.2f}",
-        '平均持仓': f"{metrics.get('avg_hold_hours', 0):.1f}h",
-        '最大回撤': f"{metrics.get('max_drawdown_pct', 0):.2f}%",
-        '夏普比率': f"{metrics.get('sharpe_ratio', 0):.2f}",
-        '最终权益': f"${metrics.get('final_capital', 0):.2f}",
-        '总收益率': f"{metrics.get('total_return', 0):.2f}%",
+        '总交易次数': str(_get('total_trades')),
+        '胜率': f"{_get('win_rate'):.1f}%",
+        '盈亏比': f"{_get('profit_factor'):.2f}",
+        '总盈亏': f"${_get('total_profit'):.2f}",
+        '平均盈利': f"${_get('avg_profit', 'avg_win'):.2f}",
+        '平均亏损': f"${_get('avg_loss'):.2f}",
+        '最大盈利': f"${_get('max_profit'):.2f}",
+        '最大亏损': f"${_get('max_loss'):.2f}",
+        '平均持仓': f"{_get('avg_hold_hours'):.1f}h",
+        '最大回撤': f"{_get('max_drawdown_pct'):.2f}%",
+        '夏普比率': f"{_get('sharpe_ratio'):.2f}",
+        '最终权益': f"${_get('final_capital'):.2f}",
+        '总收益率': f"{_get('total_return'):.2f}%",
     }

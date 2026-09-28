@@ -81,3 +81,60 @@ def run_backtest(params: dict, series='7d'):
         import traceback
         traceback.print_exc()
         return None
+
+def build_signal_context(params: dict):
+    """
+    数据准备 + 信号生成，返回信号序列与生成器上下文。
+    用于预览 / 评估等需要完整信号序列的场景。
+
+    Returns:
+        {
+            'signal_df': DataFrame,
+            'generator': DirectionSignalGenerator,
+            'median': float,
+            'remaining_hours': int,
+        }
+        或 None
+    """
+    prepared = prepare_backtest_data(params)
+    if prepared is None:
+        return None
+
+    combined = prepared['combined']
+
+    signal_params = {
+        'capacity': params.get('capacity', 0),
+        'price_threshold': params.get('price_threshold', 0.005),
+        'distance_threshold': params.get('distance_threshold', 1.5),
+        'inertia_hours': params.get('inertia', 6),
+        'momentum_enable': params.get('momentum_enable', True),
+        'momentum_coef': params.get('momentum_coef', 0.10),
+        'signal_mode': params.get('signal_mode', 'full'),
+        'median': prepared['median'],
+        'remaining_hours': prepared['remaining_hours'],
+        'window_mode': prepared['window_mode'],
+        'window_param': prepared['window_param'],
+        'window_start': prepared['window_start'],
+        'window_start_ts': prepared['window_start_ts'],
+    }
+
+    price_type = params.get('price_type', 'price_last')
+    price_df_renamed = combined[['datetime_utc', price_type]].rename(
+        columns={'datetime_utc': 'timestamp', price_type: 'price'}
+    )
+    tweet_df_renamed = combined[['datetime_utc', 'tweet_count']].rename(
+        columns={'datetime_utc': 'timestamp'}
+    )
+
+    generator = DirectionSignalGenerator(signal_params)
+    signal_df = generator.generate_signals(price_df_renamed, tweet_df_renamed)
+
+    if signal_df is None or signal_df.empty:
+        return None
+
+    return {
+        'signal_df': signal_df,
+        'generator': generator,
+        'median': prepared['median'],
+        'remaining_hours': prepared['remaining_hours'],
+    }

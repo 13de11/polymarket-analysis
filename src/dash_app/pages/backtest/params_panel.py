@@ -335,43 +335,37 @@ def create_params_panel(default_event_id=None, series='7d'):
         # ========== 操作按钮 ==========
         html.Div([
             html.Button(
-                '🚀 更新信号预览',
+                '🔄 刷新信号预览',
                 id='backtest-preview-btn',
                 n_clicks=0,
                 style={
-                    'width': '48%',
-                    'padding': '10px',
-                    'backgroundColor': '#3498db',
-                    'color': 'white',
-                    'border': 'none',
-                    'borderRadius': '6px',
-                    'fontSize': '14px',
-                    'fontWeight': 'bold',
-                    'cursor': 'pointer',
-                    'marginRight': '4%'
-                }
+                    'width': '48%', 'padding': '10px',
+                    'backgroundColor': '#3498db', 'color': 'white',
+                    'border': 'none', 'borderRadius': '6px',
+                    'fontSize': '14px', 'fontWeight': 'bold',
+                    'cursor': 'pointer', 'marginRight': '4%',
+                },
             ),
             html.Button(
-                '📊 运行回测',
+                '🚀 运行回测',
                 id='backtest-run-btn',
                 n_clicks=0,
                 style={
-                    'width': '48%',
-                    'padding': '10px',
-                    'backgroundColor': '#28a745',
-                    'color': 'white',
-                    'border': 'none',
-                    'borderRadius': '6px',
-                    'fontSize': '14px',
-                    'fontWeight': 'bold',
-                    'cursor': 'pointer'
-                }
+                    'width': '48%', 'padding': '10px',
+                    'backgroundColor': '#28a745', 'color': 'white',
+                    'border': 'none', 'borderRadius': '6px',
+                    'fontSize': '14px', 'fontWeight': 'bold',
+                    'cursor': 'pointer',
+                },
             ),
-        ], style={'display': 'flex'}),
+        ], style={'display': 'flex', 'marginBottom': '8px'}),
+        html.Div("「刷新信号预览」只更新预览图；「运行回测」跑完整回测，"
+                 "刷新绩效/交易/评估",
+                 style={'fontSize': '11px', 'color': '#7f8c8d',
+                        'textAlign': 'center'}),
 
         # ========== 隐藏存储 ==========
         dcc.Store(id='backtest-params-store', data={}),
-        dcc.Store(id='backtest-market-options-store', data=[]),
 
     ], style={
         'backgroundColor': 'white',
@@ -487,9 +481,10 @@ def register_params_callbacks(app):
                     capacity, price_threshold, distance_threshold, inertia,
                     momentum_enable, momentum_coef, signal_mode,
                     initial_capital, position_mode, position_size, backtest_range, backtest_range_custom):
-        trigger = dash.callback_context.triggered[0]['prop_id'] if dash.callback_context.triggered else ''
+        trigger = (dash.callback_context.triggered[0]['prop_id']
+                   if dash.callback_context.triggered else '')
         if not trigger or (not n_clicks_run and not n_clicks_preview):
-            return {}
+            return no_update
 
         if window_type == '7d':
             window_mode = 'rolling'

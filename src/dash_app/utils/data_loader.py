@@ -70,6 +70,12 @@ def run_query(query: str, params=()) -> pd.DataFrame:
 
 
 from functools import lru_cache
+from datetime import date
+
+
+def _daily_cache_key() -> str:
+    """每日自动失效的 cache key。数据更新后第二天自动生效。"""
+    return date.today().isoformat()
 
 
 @lru_cache(maxsize=8)
@@ -132,8 +138,8 @@ def get_elon_tweet_events(series: str = '7d'):
     # 返回副本，避免调用方修改缓存
     return cached.copy()
 
-def get_markets_by_event(event_id: str):
-    """获取指定事件下所有有价格数据的市场，按推文区间排序"""
+@lru_cache(maxsize=128)
+def _get_markets_by_event_cached(event_id: str, cache_key: str) -> pd.DataFrame:
     query = """
         SELECT DISTINCT m.id, m.slug, m.range_start, m.range_end, m.is_plus
         FROM markets m
@@ -142,6 +148,11 @@ def get_markets_by_event(event_id: str):
         ORDER BY m.range_start
     """
     return run_query(query, (event_id,))
+
+
+def get_markets_by_event(event_id: str):
+    cached = _get_markets_by_event_cached(event_id, _daily_cache_key())
+    return cached.copy()
 
 
 def get_target_market(event_id: str):
@@ -240,8 +251,9 @@ def get_target_markets_batch(event_ids: list) -> dict:
     cached = _get_target_markets_batch_cached(ids_tuple, cache_key)
     return dict(cached)
 
-def get_price_data_for_market(market_id: str, start_ts=None, end_ts=None):
-    """获取单个市场的价格数据"""
+@lru_cache(maxsize=256)
+def _get_price_data_cached(market_id: str, start_ts, end_ts,
+                           cache_key: str) -> pd.DataFrame:
     query = """
         SELECT 
             hour_start_utc,
@@ -264,12 +276,23 @@ def get_price_data_for_market(market_id: str, start_ts=None, end_ts=None):
     return df
 
 
-def get_tweet_data_for_event(event_id: str, start_ts=None, end_ts=None):
-    """获取事件时间范围内的推文数据"""
-    event = run_query("SELECT game_start_time, end_date FROM events WHERE id = ?", (event_id,))
+def get_price_data_for_market(market_id: str, start_ts=None, end_ts=None):
+    """获取单个市场的价格数据（带缓存，返回副本）"""
+    cached = _get_price_data_cached(market_id, start_ts, end_ts,
+                                    _daily_cache_key())
+    return cached.copy() if not cached.empty else cached
+
+
+@lru_cache(maxsize=256)
+def _get_tweet_data_cached(event_id: str, start_ts, end_ts,
+                           cache_key: str) -> pd.DataFrame:
+    event = run_query(
+        "SELECT game_start_time, end_date FROM events WHERE id = ?",
+        (event_id,))
     if event.empty:
         return pd.DataFrame()
-    query = "SELECT timestamp_unix_utc, tweet_count FROM tweet_hourly WHERE 1=1"
+    query = ("SELECT timestamp_unix_utc, tweet_count "
+             "FROM tweet_hourly WHERE 1=1")
     params = []
     if event['game_start_time'].iloc[0]:
         start_ts = pd.to_datetime(event['game_start_time'].iloc[0]).timestamp()
@@ -292,9 +315,18 @@ def get_tweet_data_for_event(event_id: str, start_ts=None, end_ts=None):
     return df
 
 
-def get_event_remaining_hours(event_id: str) -> int:
-    """获取事件从 gamestart 到 end 的总小时数"""
-    event = run_query("SELECT game_start_time, end_date FROM events WHERE id = ?", (event_id,))
+def get_tweet_data_for_event(event_id: str, start_ts=None, end_ts=None):
+    """获取事件时间范围内的推文数据（带缓存，返回副本）"""
+    cached = _get_tweet_data_cached(event_id, start_ts, end_ts,
+                                    _daily_cache_key())
+    return cached.copy() if not cached.empty else cached
+
+
+@lru_cache(maxsize=256)
+def _get_event_remaining_hours_cached(event_id: str, cache_key: str) -> int:
+    event = run_query(
+        "SELECT game_start_time, end_date FROM events WHERE id = ?",
+        (event_id,))
     if event.empty:
         return 0
     start = pd.to_datetime(event['game_start_time'].iloc[0])
@@ -302,9 +334,16 @@ def get_event_remaining_hours(event_id: str) -> int:
     return int((end - start).total_seconds() / 3600)
 
 
-def get_market_median(market_id: str) -> float:
-    """获取市场的中位数锚点"""
-    market = run_query("SELECT range_start, range_end FROM markets WHERE id = ?", (market_id,))
+def get_event_remaining_hours(event_id: str) -> int:
+    """获取事件从 gamestart 到 end 的总小时数（带缓存）"""
+    return _get_event_remaining_hours_cached(event_id, _daily_cache_key())
+
+
+@lru_cache(maxsize=256)
+def _get_market_median_cached(market_id: str, cache_key: str) -> float:
+    market = run_query(
+        "SELECT range_start, range_end FROM markets WHERE id = ?",
+        (market_id,))
     if market.empty:
         return 0.5
     r_start = market['range_start'].iloc[0]
@@ -312,6 +351,11 @@ def get_market_median(market_id: str) -> float:
     if pd.isna(r_end) or r_end is None:
         return float(r_start) + 50
     return (float(r_start) + float(r_end)) / 2
+
+
+def get_market_median(market_id: str) -> float:
+    """获取市场的中位数锚点（带缓存）"""
+    return _get_market_median_cached(market_id, _daily_cache_key())
 
 
 def get_event_time_range(event_id: str):
@@ -355,25 +399,34 @@ def get_table_list():
     df = run_query(query)
     return df['name'].tolist()
 
-def get_event_gamestart_label(event_id: str) -> Optional[str]:
-    """获取事件的 gamestart_label（从 events 表读取）"""
-    query = """
-        SELECT game_start_time 
-        FROM events 
-        WHERE id = ?
-    """
-    result = run_query(query, (event_id,))
+@lru_cache(maxsize=256)
+def _get_event_gamestart_label_cached(event_id: str,
+                                      cache_key: str) -> Optional[str]:
+    result = run_query(
+        "SELECT game_start_time FROM events WHERE id = ?", (event_id,))
     if result.empty:
         return None
     return result['game_start_time'].iloc[0]
 
 
-def get_event_start_timestamp(event_id: str) -> Optional[int]:
-    """获取事件开盘时间戳（用于自定义区间）"""
-    event = run_query("SELECT start_date FROM events WHERE id = ?", (event_id,))
+def get_event_gamestart_label(event_id: str) -> Optional[str]:
+    """获取事件的 gamestart_label（带缓存）"""
+    return _get_event_gamestart_label_cached(event_id, _daily_cache_key())
+
+
+@lru_cache(maxsize=256)
+def _get_event_start_ts_cached(event_id: str,
+                                cache_key: str) -> Optional[int]:
+    event = run_query(
+        "SELECT start_date FROM events WHERE id = ?", (event_id,))
     if event.empty:
         return None
     return int(pd.to_datetime(event['start_date'].iloc[0]).timestamp())
+
+
+def get_event_start_timestamp(event_id: str) -> Optional[int]:
+    """获取事件开盘时间戳（带缓存）"""
+    return _get_event_start_ts_cached(event_id, _daily_cache_key())
 
 def get_window_start_timestamp(event_id: str, window_start: str) -> Optional[int]:
     """
@@ -389,3 +442,15 @@ def get_window_start_timestamp(event_id: str, window_start: str) -> Optional[int
     elif window_start == 'open':
         return get_event_start_timestamp(event_id)
     return None
+
+def clear_caches():
+    """手动清空所有缓存。数据更新后调用，无需重启。"""
+    _get_elon_tweet_events_cached.cache_clear()
+    _get_target_markets_batch_cached.cache_clear()
+    _get_markets_by_event_cached.cache_clear()
+    _get_price_data_cached.cache_clear()
+    _get_tweet_data_cached.cache_clear()
+    _get_event_remaining_hours_cached.cache_clear()
+    _get_market_median_cached.cache_clear()
+    _get_event_gamestart_label_cached.cache_clear()
+    _get_event_start_ts_cached.cache_clear()

@@ -39,7 +39,7 @@ def buy_and_hold(price_df, initial_capital=100):
     }
 
 
-def random_signal(price_df, n_signals=10, seed=42):
+def random_signal(price_df, n_signals=10, seed=42, initial_capital=100):
     """
     随机信号：随机生成 N 个 ↑/↓ 信号，按"↑ 买，↓ 卖"跑一遍
 
@@ -47,28 +47,28 @@ def random_signal(price_df, n_signals=10, seed=42):
         price_df: DataFrame with 'price' 列
         n_signals: 信号数量
         seed: 随机种子
+        initial_capital: 初始资金
 
     Returns:
         dict: {'total_return': float, 'final_capital': float, 'n_trades': int}
     """
     if price_df.empty or len(price_df) < 2:
-        return {'total_return': 0, 'final_capital': 100, 'n_trades': 0}
+        return {'total_return': 0, 'final_capital': initial_capital,
+                'n_trades': 0}
 
     prices = price_df['price'].dropna().values
     n = len(prices)
     if n < 10:
-        return {'total_return': 0, 'final_capital': 100, 'n_trades': 0}
+        return {'total_return': 0, 'final_capital': initial_capital,
+                'n_trades': 0}
 
     rng = np.random.default_rng(seed)
 
-    # 随机选 n_signals 个位置
     n_signals = min(n_signals, n)
     idxs = sorted(rng.choice(n, n_signals, replace=False))
 
-    # 模拟：随机给每个位置 ↑ 或 ↓
-    cash = 100
+    cash = initial_capital
     position = 0
-    entry_price = 0
     trades = 0
 
     for idx in idxs:
@@ -76,12 +76,9 @@ def random_signal(price_df, n_signals=10, seed=42):
         price = prices[idx]
 
         if sig == '↑' and position == 0 and price > 0:
-            # 买
             position = cash / price
-            entry_price = price
             cash = 0
         elif sig == '↓' and position > 0:
-            # 卖
             cash = position * price
             position = 0
             trades += 1
@@ -93,7 +90,7 @@ def random_signal(price_df, n_signals=10, seed=42):
         trades += 1
 
     final_capital = cash
-    total_return = (final_capital / 100 - 1) * 100
+    total_return = (final_capital / initial_capital - 1) * 100
 
     return {
         'total_return': total_return,
