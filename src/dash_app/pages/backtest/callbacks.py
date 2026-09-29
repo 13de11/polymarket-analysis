@@ -7,7 +7,7 @@ app_new.py 里有一处 import 本模块，触发注册。
 """
 
 import dash
-from dash import html, dcc, Input, Output, State, callback, no_update
+from dash import html, Input, Output, State, callback, no_update
 import pandas as pd
 
 from src.dash_app.utils.data_loader import (
@@ -140,6 +140,10 @@ def save_params(n_clicks_run, n_clicks_preview, event_id, market_id,
         window_param = safe_int(window_custom, default=168, min_val=1)
         window_start = None
 
+    triggered_id = (dash.callback_context.triggered_id
+                    if dash.callback_context.triggered else None)
+    trigger_type = 'run' if triggered_id == 'backtest-run-btn' else 'preview'
+
     return {
         'event_id': event_id,
         'market_id': market_id,
@@ -162,6 +166,7 @@ def save_params(n_clicks_run, n_clicks_preview, event_id, market_id,
                                     min_val=0.01),
         'backtest_range': backtest_range or 'full',
         'backtest_range_custom': backtest_range_custom or [0, 100],
+        '_trigger': trigger_type,
     }
 
 
@@ -179,18 +184,19 @@ def toggle_custom_window(window_type):
 
 @callback(
     Output('backtest-result-store', 'data'),
-    Input('backtest-run-btn', 'n_clicks'),
-    State('backtest-params-store', 'data'),
+    Input('backtest-params-store', 'data'),
     prevent_initial_call=True,
 )
-def cache_backtest_result(n_clicks, params):
-    if not n_clicks:
-        return no_update
+def cache_backtest_result(params):
+    """监听 params-store。只有「运行回测」触发的更新才真正跑回测。"""
     if not params or not params.get('market_id'):
-        return {}
+        return {'error': '未选择事件或市场'}
+    if params.get('_trigger') != 'run':
+        return no_update
     result = run_backtest(params)
     if not result:
-        return {}
+        return {'error': '回测失败（数据不足或参数无效，'
+                         '请检查事件/市场/区间）'}
     return {
         'metrics': result.get('metrics', {}),
         'trades': result.get('trades', []),
@@ -230,6 +236,10 @@ def render_tab_content(tab_name, cached_result, preview_n, params, series):
         acc = stats.get('overall_accuracy', 0) * 100
         return content, f"✅ 信号预览 | 信号总数: {n} | 方向准确率: {acc:.1f}%"
 
+    if cached_result and cached_result.get('error'):
+        err = cached_result['error']
+        return _placeholder(f"❌ {err}"), f"❌ {err}"
+
     if not cached_result or not cached_result.get('metrics'):
         return _placeholder("暂无回测结果，请点击「运行回测」"), \
                "暂无回测结果"
@@ -242,25 +252,3 @@ def render_tab_content(tab_name, cached_result, preview_n, params, series):
         return render_evaluation(params, cached_result)
 
     return _placeholder("未知 Tab"), ""
-
-
-# ==================== 交易明细导出 ====================
-
-@callback(
-    Output('backtest-trades-download', 'data'),
-    Input('backtest-trades-export-btn', 'n_clicks'),
-    State('backtest-result-store', 'data'),
-    prevent_initial_call=True,
-)
-def export_trades(n_clicks, cached_result):
-    if not n_clicks or not cached_result:
-        return no_update
-    trades = cached_result.get('trades', [])
-    completed = [t for t in trades if t.get('result') != 'pending']
-    if not completed:
-        df = pd.DataFrame(columns=['提示'])
-        df.loc[0] = ['无已完成交易']
-    else:
-        df = pd.DataFrame(completed)
-    return dcc.send_data_frame(df.to_csv, 'backtest_trades.csv',
-                               index=False, encoding='utf-8-sig')
