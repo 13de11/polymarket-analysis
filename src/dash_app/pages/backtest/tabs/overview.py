@@ -1,7 +1,8 @@
 # src/dash_app/pages/backtest/tabs/overview.py
 """
 绩效概览 Tab
-- 资金曲线 + 绩效卡片（核心 / 盈亏细节）
+- 资金曲线（含买卖点标记，Y 轴贴合曲线）
+- 绩效卡片（核心 / 盈亏细节）
 - 从 store 读缓存结果，不再自己跑回测
 """
 
@@ -51,7 +52,10 @@ def render_overview_tab(cached_result):
     content = html.Div([
         html.Div([
             html.H5("📈 资金曲线", style={'margin': '10px 0'}),
-            dcc.Graph(figure=fig_equity, style={'height': '300px'}),
+            html.Div("▲ = 买入点 · ▼ = 卖出点 · 灰虚线 = 初始资金",
+                     style={'fontSize': '12px', 'color': '#6c757d',
+                            'marginBottom': '6px'}),
+            dcc.Graph(figure=fig_equity, style={'height': '340px'}),
         ]),
         html.H5("📊 核心绩效", style={'margin': '15px 0 10px 0'}),
         html.Div(core_cards, style={
@@ -71,33 +75,84 @@ def render_overview_tab(cached_result):
     return content, status
 
 
-def create_equity_curve_chart(equity_curve: list) -> go.Figure:
+def create_equity_curve_chart(equity_curve):
+    """资金曲线 + 买卖点标记
+
+    买卖点从 equity_curve 的 position 变化推断：
+    - position 从 0 → 正  = 买入
+    - position 从 正 → 0  = 卖出
+    """
     if not equity_curve:
         return go.Figure()
 
     df = pd.DataFrame(equity_curve)
-    if df.empty:
+    if df.empty or 'equity' not in df.columns:
         return go.Figure()
 
     df['timestamp'] = pd.to_datetime(df['timestamp'])
+    df = df.sort_values('timestamp').reset_index(drop=True)
+
+    # 从 position 推断买卖点
+    if 'position' in df.columns:
+        df['prev_pos'] = df['position'].shift(1).fillna(0)
+        buy_df = df[(df['prev_pos'] == 0) & (df['position'] > 0)]
+        sell_df = df[(df['prev_pos'] > 0) & (df['position'] == 0)]
+    else:
+        buy_df = df.iloc[0:0]
+        sell_df = df.iloc[0:0]
 
     fig = go.Figure()
+
+    # ---- 主曲线 ----
     fig.add_trace(go.Scatter(
-        x=df['timestamp'], y=df['equity'], name='权益曲线',
+        x=df['timestamp'], y=df['equity'],
+        name='权益',
         line=dict(color='#2c3e50', width=2),
-        fill='tozeroy', fillcolor='rgba(44, 62, 80, 0.1)',
+        hovertemplate='%{x|%m-%d %H:%M}<br>权益: $%{y:.2f}<extra></extra>',
     ))
 
-    if not df.empty:
-        initial = df['equity'].iloc[0]
-        fig.add_hline(y=initial, line_dash="dash", line_color="gray",
-                      annotation_text="初始资金")
+    # ---- 初始资金参考线 ----
+    initial = float(df['equity'].iloc[0])
+    fig.add_hline(y=initial, line_dash="dash", line_color="gray",
+                  annotation_text="初始资金",
+                  annotation_position="right")
+
+    # ---- 买入点 ----
+    if not buy_df.empty:
+        fig.add_trace(go.Scatter(
+            x=buy_df['timestamp'], y=buy_df['equity'],
+            mode='markers', name='买入',
+            marker=dict(symbol='triangle-up', size=11, color='#2ecc71',
+                        line=dict(color='white', width=1)),
+            hovertemplate='买入<br>%{x|%m-%d %H:%M}'
+                          '<br>权益: $%{y:.2f}<extra></extra>',
+        ))
+
+    # ---- 卖出点 ----
+    if not sell_df.empty:
+        fig.add_trace(go.Scatter(
+            x=sell_df['timestamp'], y=sell_df['equity'],
+            mode='markers', name='卖出',
+            marker=dict(symbol='triangle-down', size=11, color='#e74c3c',
+                        line=dict(color='white', width=1)),
+            hovertemplate='卖出<br>%{x|%m-%d %H:%M}'
+                          '<br>权益: $%{y:.2f}<extra></extra>',
+        ))
+
+    # ---- Y 轴贴合曲线，避免空白 ----
+    y_min = float(df['equity'].min())
+    y_max = float(df['equity'].max())
+    span = y_max - y_min
+    pad = span * 0.08 if span > 0 else max(abs(y_max) * 0.01, 1.0)
 
     fig.update_layout(
         title='资金曲线', xaxis_title='时间', yaxis_title='权益 ($)',
-        hovermode='x', height=300,
-        margin=dict(l=40, r=40, t=40, b=40),
+        hovermode='x unified', height=340,
+        margin=dict(l=50, r=60, t=40, b=40),
+        legend=dict(orientation='h', yanchor='bottom', y=1.02,
+                    xanchor='center', x=0.5),
     )
     fig.update_xaxes(tickformat='%m-%d %H:%M',
                      hoverformat='%Y-%m-%d %H:%M:%S')
+    fig.update_yaxes(range=[y_min - pad, y_max + pad])
     return fig
