@@ -337,14 +337,58 @@ td 支持任意 CSS 属性作为 kwargs（color / fontWeight / fontSize / textAl
 | 6 | 其余页面优化：`insights/` / `price_tweet_analysis.py` / `home.py` | 🔲 下一阶段 |
 | 7 | 多用户登录 + 服务器端实验历史 | 🔲 远期（最终目标） |
 
-### 阶段 5 遗留的技术债
+### 待办清单
 
-| 项 | 说明 | 计划 |
-|----|------|------|
-| 参数面板统一 | backtest / research 的参数面板高度重复 | 等两边功能对齐后，统一到 `PARAM_SCHEMA` 动态生成 |
-| 全局回调风格统一 | 项目里混用 `@callback` 和 `app.callback` | 涉及多个模块，最后整体统一 |
-| `generator.py` 内部状态 | `prev_distance` 在函数内和循环末尾各更新一次，当前行为正确但脆弱 | 策略定型后重构 |
-| `baseline.random_signal` 风险暴露 | 随机信号是"全押"，策略是"固定金额"，基线对比不完全公平 | 阶段 6 或更晚处理 |
+按模块 + 优先级组织。编号供后续对话直接引用（如"做 R1"）。
+
+#### 🔴 高优先
+
+| 编号 | 方向 | 模块 | 备注 |
+|------|------|------|------|
+| M1~M3 | 扫描 `insights/` / `price_tweet_analysis.py` / `home.py` 的表格对齐 | 阶段 6 | 用 `utils/ui/table.py` 统一 |
+| M4 | 检查上述三页面是否有"多次重跑"架构问题 | 阶段 6 | 参考 backtest 的坑 |
+| R1 | 多事件批量研究：选 N 个事件跑同一套策略，汇总对比 | 策略研究 | 当前只能单事件 |
+| T5 | `prepare_backtest_data` 的 merge 结果缓存 | 基础设施 | 缓存层第二步 |
+| T6 | research 的对比 / 敏感性 / 网格加 `dcc.Loading` | 策略研究 | 现在跑 5×5 网格会像卡死 |
+
+#### 🟠 中优先
+
+| 编号 | 方向 | 模块 | 备注 |
+|------|------|------|------|
+| R2 | 参数-指标散点图 | 策略研究 | 可视化增强 |
+| R3 | 交易分布直方图（盈亏 / 持仓时长） | 策略研究 | 可视化增强 |
+| R4 | 策略类型扩展：`buy_hold` / `reverse_signal` / 双均线 | 策略研究 | 需在 `runner.py` 按 `strategy_id` 分发 |
+| R5 | 窗口作为策略级覆盖项（A/B/C 用不同 `window_type`） | 策略研究 | 现在窗口是全局基础参数 |
+| E1 | 多事件聚合统计：跨事件看策略稳定性 | 策略研究 | 与 R1 相关 |
+| B1 | 交易明细排序（按盈亏 / 时长点击排序） | 回测 | — |
+| B2 | 交易明细筛选（只看盈利 / 亏损） | 回测 | — |
+| B3 | 参数面板统一到 `PARAM_SCHEMA` | 回测 + 研究 | 两边高度重复，等对齐后做 |
+| T1 | 回调风格统一：`@callback` vs `app.callback` | 全局 | 涉及多个模块，最后整体改 |
+| T2 | Tab 改用 `dcc.Tabs` children 机制 | 全局 | 现在用 `style={'display'}` 切换 |
+
+#### 🟡 低优先 / 技术债
+
+| 编号 | 方向 | 模块 | 备注 |
+|------|------|------|------|
+| B4 | 验证 `backtest_range='custom'` 在 preview tab 的支持 | 回测 | 已通过 `build_signal_context` 打通，未实测 |
+| B5 | 参数变化时加 loading 提示 | 回测 | 现在只有 tab 内容有 loading |
+| B6 | "应用到 research" / "应用到 backtest" 按钮 | 回测 + 研究 | 参数互通 |
+| T3 | `generator.py` 状态管理重构（`prev_distance` 双重更新） | 信号 | 策略定型后做 |
+| T4 | `baseline.random_signal` 风险暴露公平性（全押 vs 固定金额） | 回测 | 基线对比不严格公平 |
+| T7 | 研究面板懒加载（`create_research_panel` 不查库） | 策略研究 | 缓存后已不痛，低优先 |
+| T8 | `position_size` / `initial_capital` 类型安全 | 回测 + 研究 | 非数字不抛异常 |
+| C4 | 同 T8（原问题清单编号） | — | — |
+
+#### 🔵 远期 / 大方向
+
+| 编号 | 方向 | 备注 |
+|------|------|------|
+| R6 | 实验服务器端存储（`LocalFileStorage` 接口已就绪） | 数据落在 `data/experiments/`，前端改为"保存到服务器" |
+| R7 | 多用户登录 + 历史记录 | 最终目标，涉及 `flask_login` 或 session |
+| E2 | 参数寻优（敏感性反过来自动搜最优） | 现有扫描的延伸 |
+| E3 | 实时数据接入（事件进行中也能分析） | 架构变化大 |
+| E4 | 策略信号导出（给外部工具） | — |
+
 ## 📝 说明
 
 - `data/*.db` 不入 git（本地保留）

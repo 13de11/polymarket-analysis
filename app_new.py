@@ -12,9 +12,9 @@ server = app.server
 from src.dash_app.pages import price_tweet_analysis
 from src.dash_app.pages import home
 from src.dash_app.pages import insights as insights_dashboard
-from src.dash_app.pages import backtest
 from src.dash_app.pages import research
-from src.dash_app.pages.backtest.params_panel import register_params_callbacks
+from src.dash_app.pages.backtest.layout import layout as backtest_layout
+from src.dash_app.pages.backtest import callbacks as _backtest_callbacks  # noqa: F401
 
 app.layout = html.Div([
     dcc.Location(id='url'),
@@ -96,7 +96,6 @@ def update_series_label(series):
     return labels.get(series, '当前显示: 7天推文事件')
 
 
-
 @callback(
     Output('page-content', 'children'),
     Input('url', 'pathname')
@@ -107,11 +106,12 @@ def display_page(pathname):
     elif pathname == '/insights':
         return insights_dashboard.layout()
     elif pathname == '/backtest':
-        return backtest.layout()
+        return backtest_layout()
     elif pathname == '/research':
         return research.layout()
     else:
         return home.layout()
+
 
 @callback(
     Output('nav-home', 'className'),
@@ -136,8 +136,9 @@ def highlight_nav(pathname):
         return active, base, base, base, base
 
 
-register_params_callbacks(app)
+# 注意：backtest 的回调已在 import callbacks 时通过 @callback 自动注册
 research.register_callbacks(app)
+
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=8050)
