@@ -156,8 +156,12 @@ def render_comparison_tab():
             ]),
         ], style={'padding': '15px', 'backgroundColor': '#f8f9fa',
                   'borderRadius': '8px'}),
-        html.Div(id='research-comparison-results',
-                 style={'marginTop': '15px'}),
+        dcc.Loading(
+            id='research-comparison-loading',
+            type='default', color='#6c5ce7',
+            children=[html.Div(id='research-comparison-results',
+                               style={'marginTop': '15px'})],
+        ),
         dcc.Store(id='research-comparison-results-store'),
         dcc.Download(id='research-comparison-download'),
     ])

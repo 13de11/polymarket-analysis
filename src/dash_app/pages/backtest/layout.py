@@ -97,7 +97,6 @@ def layout():
                                        style={'minHeight': '400px'})],
                 ),
                 dcc.Store(id='backtest-result-store', data={}),
-                dcc.Download(id='backtest-trades-download'),
             ], className='backtest-right', style={
                 'width': '70%', 'display': 'inline-block',
                 'verticalAlign': 'top', 'boxSizing': 'border-box',

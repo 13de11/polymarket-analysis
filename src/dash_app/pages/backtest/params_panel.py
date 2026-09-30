@@ -103,7 +103,6 @@ def create_params_panel(default_event_id=None, series='7d'):
                             id='backtest-window-custom',
                             type='text',
                             placeholder='自定义小时数',
-                            debounce=True,
                             style={'width': '60%', 'display': 'inline-block', 'marginTop': '4px'}
                         ),
                         html.Span(" 小时", style={'fontSize': '12px', 'color': '#7f8c8d', 'marginLeft': '4px'})
@@ -255,7 +254,6 @@ def create_params_panel(default_event_id=None, series='7d'):
                             id='backtest-initial-capital',
                             type='text',
                             value='100',
-                            debounce=True,
                             style={'width': '100%', 'padding': '4px', 'fontSize': '12px'}
                         ),
                         html.Div("回测起始资金（美元）",
@@ -284,7 +282,6 @@ def create_params_panel(default_event_id=None, series='7d'):
                             id='backtest-position-size',
                             type='text',
                             value='10',
-                            debounce=True,
                             style={'width': '100%', 'padding': '4px', 'fontSize': '12px'}
                         ),
                         html.Div("固定金额模式下=美元数；固定份额模式下=份数",

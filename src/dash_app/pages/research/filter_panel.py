@@ -6,6 +6,7 @@
 import dash
 from dash import html, dcc, Input, Output, State
 import pandas as pd
+from src.dash_app.utils.parsing import safe_float
 
 from src.dash_app.utils.data_loader import (
     get_elon_tweet_events,
@@ -165,7 +166,7 @@ def create_research_panel(series='7d'):
                     html.Label("初始资金:", style={'fontSize': '12px'}),
                     dcc.Input(
                         id='research-initial-capital',
-                        type='text', value='100', debounce=True,
+                        type='text', value='100',
                         style={'width': '100%', 'padding': '4px', 'fontSize': '12px'}
                     ),
                 ], style={'marginBottom': '8px'}),
@@ -184,7 +185,7 @@ def create_research_panel(series='7d'):
                     html.Label("每次投入:", style={'fontSize': '12px'}),
                     dcc.Input(
                         id='research-position-size',
-                        type='text', value='10', debounce=True,
+                        type='text', value='10',
                         style={'width': '100%', 'padding': '4px', 'fontSize': '12px'}
                     ),
                 ], style={'marginBottom': '8px'}),
@@ -309,8 +310,10 @@ def register_research_callbacks(app):
             'momentum_enable': momentum_enable,
             'momentum_coef': momentum_coef or 0.10,
             'signal_mode': 'start',
-            'initial_capital': int(initial_capital) if initial_capital else 100,
+            'initial_capital': safe_float(initial_capital, default=100.0,
+                                          min_val=1.0),
             'position_mode': position_mode or 'fixed_amount',
-            'position_size': float(position_size) if position_size else 10,
+            'position_size': safe_float(position_size, default=10.0,
+                                        min_val=0.01),
             'backtest_range': 'full',
         }

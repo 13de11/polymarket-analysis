@@ -142,8 +142,12 @@ def render_sensitivity_tab():
         ], style={'padding': '15px', 'backgroundColor': '#f8f9fa',
                   'borderRadius': '8px'}),
 
-        html.Div(id='research-sensitivity-results',
-                 style={'marginTop': '15px'}),
+        dcc.Loading(
+            id='research-sensitivity-loading',
+            type='default', color='#00b894',
+            children=[html.Div(id='research-sensitivity-results',
+                               style={'marginTop': '15px'})],
+        ),
         dcc.Store(id='research-sensitivity-results-store'),
         dcc.Download(id='research-sensitivity-download'),
     ])

@@ -5,6 +5,7 @@ data/*.db
 data/*.db-wal
 data/*.db-shm
 data/*.db.bak
+data/experiments/
 
 # ===== 大 Excel（数据导入中间产物，Web 运行不需要）=====
 data/tweet_counts_long.xlsx
@@ -42,6 +43,8 @@ __pycache__/
 ~$*.xlsx
 *.log
 *.tmp
+_test_*.py
+_find_*.py
 
 # ===== 系统文件 =====
 .DS_Store
