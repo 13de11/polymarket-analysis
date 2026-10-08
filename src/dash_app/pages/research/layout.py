@@ -7,6 +7,7 @@ from dash import html, dcc
 from src.dash_app.pages.research.filter_panel import create_research_panel
 from src.dash_app.pages.research.tabs.comparison import render_comparison_tab
 from src.dash_app.pages.research.tabs.sensitivity import render_sensitivity_tab
+from src.dash_app.pages.research.tabs.batch import render_batch_tab
 
 
 def layout():
@@ -36,26 +37,25 @@ def layout():
                 ], style={'borderBottom': '2px solid #6c5ce7', 'paddingBottom': '10px', 'marginBottom': '15px'}),
 
                 dcc.Tabs(
-                    id='research-tabs',
-                    value='comparison',
+                    id='research-tabs', value='comparison',
                     children=[
                         dcc.Tab(label='📊 策略对比', value='comparison'),
                         dcc.Tab(label='📊 敏感性分析', value='sensitivity'),
+                        dcc.Tab(label='📦 批量研究', value='batch'),
                     ],
-                    style={'marginBottom': '15px'}
+                    style={'marginBottom': '15px'},
                 ),
 
                 html.Div([
-                    html.Div(
-                        render_comparison_tab(),
-                        id='research-tab-comparison',
-                        style={'display': 'block'}
-                    ),
-                    html.Div(
-                        render_sensitivity_tab(),
-                        id='research-tab-sensitivity',
-                        style={'display': 'none'}
-                    ),
+                    html.Div(render_comparison_tab(),
+                             id='research-tab-comparison',
+                             style={'display': 'block'}),
+                    html.Div(render_sensitivity_tab(),
+                             id='research-tab-sensitivity',
+                             style={'display': 'none'}),
+                    html.Div(render_batch_tab(),
+                             id='research-tab-batch',
+                             style={'display': 'none'}),
                 ], style={'minHeight': '400px'}),
 
             ], className='backtest-right', style={
@@ -72,9 +72,16 @@ from dash import callback, Output, Input
 @callback(
     Output('research-tab-comparison', 'style'),
     Output('research-tab-sensitivity', 'style'),
+    Output('research-tab-batch', 'style'),
     Input('research-tabs', 'value'),
 )
 def switch_research_tab(tab):
+    hidden = {'display': 'none'}
+    shown = {'display': 'block'}
     if tab == 'comparison':
-        return {'display': 'block'}, {'display': 'none'}
-    return {'display': 'none'}, {'display': 'block'}
+        return shown, hidden, hidden
+    if tab == 'sensitivity':
+        return hidden, shown, hidden
+    if tab == 'batch':
+        return hidden, hidden, shown
+    return shown, hidden, hidden
