@@ -1,15 +1,17 @@
 # src/dash_app/pages/research/tabs/batch.py
 """
-策略研究 - 批量研究 Tab（小版本）
+策略研究 - 批量研究 Tab（小版本 + 热力图）
 
 对当前系列的全部事件跑一遍已启用的策略，输出：
 - 聚合表：每策略的收益均值/中位数/标准差/胜事件率
-- 逐事件表：事件 × 策略 的收益矩阵
+- 事件 × 策略 收益矩阵热力图
+- 逐事件明细表
 
 策略复用「策略对比」Tab 里配置好的卡片（A/B/C）。
 """
 
-from dash import html, dcc, Input, Output, State, callback, no_update
+from dash import html, dcc, Input, Output, State, callback
+import plotly.graph_objects as go
 
 from src.dash_app.utils.data_loader import (
     get_elon_tweet_events,
@@ -89,7 +91,7 @@ def run_batch(n_clicks, base_params, series, sa, sb, sc):
         return _warn("至少启用一个策略（在「策略对比」Tab 里勾选）")
 
     # 2. 取当前系列全部事件 + 目标市场
-    pairs = _get_all_pairs(series)
+    pairs, slug_map = _get_all_pairs(series)
     if not pairs:
         return _warn(f"系列 {series} 下没有可用的事件+市场组合")
 
@@ -105,15 +107,21 @@ def run_batch(n_clicks, base_params, series, sa, sb, sc):
         return _warn("批量研究无结果")
 
     # 4. 渲染
-    return _render_results(result, configs)
+    return _render_results(result, configs, slug_map)
 
 
 # ==================== 辅助 ====================
 
 def _get_all_pairs(series):
+    """返回 (pairs, slug_map)：
+    - pairs: [(event_id, market_id), ...]
+    - slug_map: {event_id: slug}
+    """
     events = get_elon_tweet_events(series)
     if events is None or events.empty:
-        return []
+        return [], {}
+
+    slug_map = dict(zip(events['id'], events['slug']))
     ids = events['id'].tolist()
     targets = get_target_markets_batch(ids)
     pairs = []
@@ -121,7 +129,18 @@ def _get_all_pairs(series):
         t = targets.get(eid)
         if t:
             pairs.append((eid, t['id']))
-    return pairs
+    return pairs, slug_map
+
+
+def _short_slug(slug, max_len=30):
+    """把 slug 压缩成短标签"""
+    if not slug:
+        return ''
+    # 去掉公共前缀
+    s = slug.replace('elon-musk-of-tweets-', '')
+    if len(s) > max_len:
+        s = s[:max_len - 1] + '…'
+    return s
 
 
 def _warn(msg):
@@ -132,7 +151,7 @@ def _warn(msg):
     })
 
 
-def _render_results(result, configs):
+def _render_results(result, configs, slug_map):
     aggregate = result.get('aggregate', {})
     per_event = result.get('per_event', {})
 
@@ -141,9 +160,20 @@ def _render_results(result, configs):
                 style={'margin': '10px 0'}),
         _render_aggregate_table(aggregate, configs),
 
-        html.H5(f"📋 逐事件收益（%）",
+        html.H5("🔥 事件 × 策略 收益矩阵",
                 style={'margin': '20px 0 10px 0'}),
-        _render_per_event_table(per_event, configs),
+        html.Div("每格 = 该策略在该事件上的总收益率（绿正红负）",
+                 style={'fontSize': '12px', 'color': '#6c757d',
+                        'marginBottom': '6px'}),
+        dcc.Graph(figure=_create_matrix_heatmap(
+            per_event, configs, slug_map)),
+
+        html.H5("📋 逐事件明细",
+                style={'margin': '20px 0 10px 0'}),
+        html.Div("💡 点表头排序 · 右上可导出 CSV",
+                 style={'fontSize': '12px', 'color': '#6c757d',
+                        'marginBottom': '6px'}),
+        _create_per_event_datatable(per_event, configs, slug_map),
     ])
 
 
@@ -175,27 +205,129 @@ def _render_aggregate_table(aggregate, configs):
     return tbl(headers, rows)
 
 
-def _render_per_event_table(per_event, configs):
-    headers = ['事件 ID', '市场 ID'] + [c.name for c in configs]
-    rows = []
-    for eid, ev in per_event.items():
-        cells = [
-            td(str(eid)),
-            td(str(ev['market_id'])),
-        ]
+def _create_matrix_heatmap(per_event, configs, slug_map):
+    """事件 × 策略 收益矩阵热力图"""
+    event_ids = list(per_event.keys())
+    if not event_ids:
+        return go.Figure()
+
+    y_labels = []
+    for eid in event_ids:
+        slug = slug_map.get(eid, '')
+        y_labels.append(_short_slug(slug, max_len=24) if slug else str(eid))
+    x_labels = [c.name for c in configs]
+
+    z = []
+    text = []
+    for eid in event_ids:
+        row = []
+        row_text = []
         for cfg in configs:
-            s = ev['strategies'].get(cfg.name, {})
+            s = per_event[eid]['strategies'].get(cfg.name, {})
             if s.get('status') != 'ok':
-                cells.append(td('—',
-                                color='#e74c3c'))
+                row.append(None)
+                row_text.append('—')
             else:
                 v = s['metrics'].get('total_return')
                 if v is None:
-                    cells.append(td('—'))
+                    row.append(None)
+                    row_text.append('—')
                 else:
-                    color = '#28a745' if v > 0 else \
-                            '#e74c3c' if v < 0 else '#6c757d'
-                    cells.append(td(f"{v:+.2f}%", color=color,
-                                    fontWeight='bold'))
-        rows.append(html.Tr(cells))
-    return tbl(headers, rows)
+                    v = float(v)
+                    row.append(v)
+                    row_text.append(f"{v:+.1f}%")
+        z.append(row)
+        text.append(row_text)
+
+    # 对称色阶，让 0 居中
+    all_vals = [v for row in z for v in row if v is not None]
+    if all_vals:
+        vmax = max(abs(min(all_vals)), abs(max(all_vals)))
+        vmax = vmax if vmax > 0 else 1.0
+    else:
+        vmax = 1.0
+
+    fig = go.Figure(go.Heatmap(
+        x=x_labels,
+        y=y_labels,
+        z=z,
+        text=text,
+        texttemplate="%{text}",
+        textfont={"size": 11, "color": "#2c3e50"},
+        colorscale='RdYlGn',
+        zmin=-vmax, zmax=vmax, zmid=0,
+        colorbar=dict(title='收益%', thickness=12),
+        hovertemplate=(
+            '事件: %{y}<br>策略: %{x}<br>'
+            '收益: %{z:.2f}%<extra></extra>'
+        ),
+    ))
+
+    fig.update_layout(
+        height=max(280, len(event_ids) * 32 + 140),
+        margin=dict(l=160, r=80, t=20, b=40),
+        yaxis=dict(autorange='reversed', tickfont=dict(size=11)),
+        xaxis=dict(side='top', tickfont=dict(size=12)),
+    )
+    return fig
+
+
+def _create_per_event_datatable(per_event, configs, slug_map):
+    """逐事件明细 DataTable：可排序、分页、导出"""
+    from dash import dash_table
+
+    rows = []
+    for eid, ev in per_event.items():
+        slug = slug_map.get(eid, '')
+        row = {
+            'event_id': eid,
+            'event_slug': _short_slug(slug, max_len=36) if slug else '',
+            'market_id': ev['market_id'],
+        }
+        for cfg in configs:
+            s = ev['strategies'].get(cfg.name, {})
+            if s.get('status') != 'ok':
+                row[cfg.name] = '—'
+            else:
+                v = s['metrics'].get('total_return')
+                row[cfg.name] = (f"{float(v):+.2f}%"
+                                 if v is not None else '—')
+        rows.append(row)
+
+    columns = [
+        {'name': '事件 ID', 'id': 'event_id'},
+        {'name': '事件', 'id': 'event_slug'},
+        {'name': '市场 ID', 'id': 'market_id'},
+    ] + [{'name': c.name, 'id': c.name} for c in configs]
+
+    return dash_table.DataTable(
+        id='research-batch-events-table',
+        data=rows,
+        columns=columns,
+        sort_action='native',
+        page_action='native',
+        page_size=15,
+        page_current=0,
+        export_format='csv',
+        export_headers='display',
+        style_table={'overflowX': 'auto', 'minWidth': '100%'},
+        style_header={
+            'backgroundColor': '#f1f3f5', 'fontWeight': 'bold',
+            'textAlign': 'center',
+            'borderBottom': '1px solid #dee2e6',
+            'padding': '6px 8px', 'fontSize': '12px',
+        },
+        style_cell={
+            'textAlign': 'center', 'padding': '5px 8px',
+            'fontSize': '13px', 'border': '1px solid #e9ecef',
+            'whiteSpace': 'normal', 'height': 'auto',
+        },
+        style_cell_conditional=[
+            {'if': {'column_id': 'event_slug'},
+             'textAlign': 'left', 'minWidth': '220px'},
+            {'if': {'column_id': 'event_id'},
+             'minWidth': '80px'},
+            {'if': {'column_id': 'market_id'},
+             'minWidth': '90px'},
+        ],
+    )
