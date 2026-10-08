@@ -1,11 +1,11 @@
 # src/dash_app/pages/research/tabs/batch.py
 """
-策略研究 - 批量研究 Tab（小版本 + 热力图）
+策略研究 - 批量研究 Tab（事件多选版）
 
-对当前系列的全部事件跑一遍已启用的策略，输出：
+对选中事件跑一遍「策略对比」里已启用的策略，输出：
 - 聚合表：每策略的收益均值/中位数/标准差/胜事件率
 - 事件 × 策略 收益矩阵热力图
-- 逐事件明细表
+- 逐事件明细 DataTable（排序/分页/导出）
 
 策略复用「策略对比」Tab 里配置好的卡片（A/B/C）。
 """
@@ -28,12 +28,24 @@ STRATEGY_COLORS = {'a': '#3498db', 'b': '#e74c3c', 'c': '#2ecc71'}
 def render_batch_tab():
     return html.Div([
         html.Div([
-            html.P("对当前系列的全部事件跑一遍「策略对比」里已启用的策略。",
+            html.P("对选中事件跑一遍「策略对比」里已启用的策略。",
                    style={'fontSize': '13px', 'color': '#495057',
-                          'marginBottom': '6px'}),
-            html.P("⚠️ 小版本：事件范围固定为「全系列」，策略复用 A/B/C 卡片。",
-                   style={'fontSize': '12px', 'color': '#856404',
                           'marginBottom': '10px'}),
+
+            html.Label("选择事件（默认全选）：",
+                       style={'fontWeight': 'bold',
+                              'fontSize': '13px',
+                              'marginBottom': '4px',
+                              'display': 'block'}),
+            dcc.Dropdown(
+                id='research-batch-event-selector',
+                options=[],
+                value=[],
+                multi=True,
+                placeholder='加载中...',
+                style={'width': '100%', 'marginBottom': '10px'},
+            ),
+
             html.Button(
                 '🚀 运行批量研究',
                 id='research-batch-run-btn',
@@ -56,7 +68,27 @@ def render_batch_tab():
     ])
 
 
-# ==================== 回调 ====================
+# ==================== 回调：事件列表刷新 ====================
+
+@callback(
+    Output('research-batch-event-selector', 'options'),
+    Output('research-batch-event-selector', 'value'),
+    Input('series-selector', 'value'),
+)
+def _populate_batch_events(series):
+    """系列变化时刷新事件下拉列表，默认全选"""
+    pairs, slug_map = _get_all_pairs(series or '7d')
+    options = []
+    values = []
+    for eid, _ in pairs:
+        slug = slug_map.get(eid, '')
+        label = _short_slug(slug, max_len=50) if slug else str(eid)
+        options.append({'label': label, 'value': eid})
+        values.append(eid)
+    return options, values
+
+
+# ==================== 回调：运行批量 ====================
 
 @callback(
     Output('research-batch-results', 'children'),
@@ -66,9 +98,10 @@ def render_batch_tab():
     State('research-strategy-a-store', 'data'),
     State('research-strategy-b-store', 'data'),
     State('research-strategy-c-store', 'data'),
+    State('research-batch-event-selector', 'value'),
     prevent_initial_call=True,
 )
-def run_batch(n_clicks, base_params, series, sa, sb, sc):
+def run_batch(n_clicks, base_params, series, sa, sb, sc, selected_events):
     if not n_clicks:
         return html.Div()
     if not base_params:
@@ -90,10 +123,20 @@ def run_batch(n_clicks, base_params, series, sa, sb, sc):
     if not configs:
         return _warn("至少启用一个策略（在「策略对比」Tab 里勾选）")
 
-    # 2. 取当前系列全部事件 + 目标市场
-    pairs, slug_map = _get_all_pairs(series)
-    if not pairs:
+    # 2. 取事件 + 市场，按用户选择过滤
+    all_pairs, slug_map = _get_all_pairs(series)
+    if not all_pairs:
         return _warn(f"系列 {series} 下没有可用的事件+市场组合")
+
+    if selected_events:
+        selected_set = set(selected_events)
+        pairs = [(eid, mid) for eid, mid in all_pairs
+                 if eid in selected_set]
+    else:
+        pairs = all_pairs
+
+    if not pairs:
+        return _warn("请至少选择一个事件")
 
     # 3. 跑批量
     try:
@@ -136,7 +179,6 @@ def _short_slug(slug, max_len=30):
     """把 slug 压缩成短标签"""
     if not slug:
         return ''
-    # 去掉公共前缀
     s = slug.replace('elon-musk-of-tweets-', '')
     if len(s) > max_len:
         s = s[:max_len - 1] + '…'
@@ -239,7 +281,6 @@ def _create_matrix_heatmap(per_event, configs, slug_map):
         z.append(row)
         text.append(row_text)
 
-    # 对称色阶，让 0 居中
     all_vals = [v for row in z for v in row if v is not None]
     if all_vals:
         vmax = max(abs(min(all_vals)), abs(max(all_vals)))
