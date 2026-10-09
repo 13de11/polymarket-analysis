@@ -541,7 +541,7 @@ def export_comparison(n_metrics, n_trades, store_data):
 
 @callback(
     Output('global-params', 'data', allow_duplicate=True),
-    Output('url', 'pathname'),
+    Output('url', 'pathname', allow_duplicate=True),
     Input({'type': 'research-import-btn', 'index': ALL}, 'n_clicks'),
     State('research-params-store', 'data'),
     State('research-strategy-a-store', 'data'),
