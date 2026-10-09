@@ -4,11 +4,10 @@
 
 从 PARAM_SCHEMA 生成参数 UI，供处理层页面（信号回测 / 策略研究）复用。
 
-对象选择（事件/市场）比较特殊，单独手写；
-其他三组（维度 / 信号 / 评价）由 schema 驱动生成。
+命名规则（唯一且简单）：
+    组件 ID = f"{prefix}-{PARAM_SCHEMA[key]['id']}"
 
-组件 ID 格式：{prefix}-{id_suffix}
-其中 id_suffix 对大多数参数就是 key 本身，少数需要重命名（见 ID_SUFFIX）。
+不做自动转换，不做特殊映射，不跳过任何 key——每个 key 的 id 显式声明。
 """
 
 from dash import html, dcc
@@ -18,19 +17,8 @@ from src.dash_app.utils.research.params_schema import (
 )
 
 
-# 参数 key → 组件 ID 后缀（处理特殊命名）
-# 未列出的 key 会自动把下划线换成连字符
-ID_SUFFIX = {
-    'backtest_range': 'range',
-}
-
-# 不在 schema 自动生成中出现的 key（由 extra_children 手写提供）
-SKIP_KEYS = {'window_custom_hours'}
-
-
 def _make_id(prefix: str, key: str) -> str:
-    suffix = ID_SUFFIX.get(key, key.replace('_', '-'))
-    return f"{prefix}-{suffix}"
+    return f"{prefix}-{PARAM_SCHEMA[key]['id']}"
 
 
 def get_component_id(prefix: str, key: str) -> str:
@@ -48,30 +36,27 @@ def _make_control(prefix: str, key: str):
     default = schema.get('default')
 
     if ui == 'slider':
-        marks = _make_slider_marks(schema)
         return dcc.Slider(
             id=cid,
             min=schema['min'], max=schema['max'],
             step=schema['step'], value=default,
-            marks=marks,
+            marks=_make_slider_marks(schema),
             tooltip={'placement': 'bottom', 'always_visible': False},
         )
 
     if ui == 'radio':
-        options = _make_radio_options(schema)
         return dcc.RadioItems(
             id=cid,
-            options=options,
+            options=_make_radio_options(schema),
             value=default,
             inline=True,
             style={'fontSize': '12px'},
         )
 
     if ui == 'dropdown':
-        options = _make_dropdown_options(schema)
         return dcc.Dropdown(
             id=cid,
-            options=options,
+            options=_make_dropdown_options(schema),
             value=default,
             clearable=False,
             style={'width': '100%', 'fontSize': '12px'},
@@ -90,13 +75,16 @@ def _make_control(prefix: str, key: str):
 def _make_slider_marks(schema):
     """Sliders 的刻度标记"""
     lo, hi = schema['min'], schema['max']
-    # 默认给 3~5 个 mark
     if schema['type'] == 'int':
-        step = max(1, (hi - lo) // 6)
+        step = max(1, (hi - lo) // 5)
         vals = list(range(lo, hi + 1, step))
-        return {v: str(v) for v in vals[:7]}
-    # float
-    return {lo: f"{lo:g}", hi: f"{hi:g}"}
+        return {v: str(v) for v in vals[:6]}
+    # float：4 个等距 mark
+    if lo == hi:
+        return {lo: f"{lo:g}"}
+    span = hi - lo
+    vals = [lo + span * i / 3 for i in range(4)]
+    return {round(v, 6): f"{v:g}" for v in vals}
 
 
 def _make_radio_options(schema):
@@ -129,8 +117,6 @@ def create_schema_section(prefix: str, group: str,
     keys = get_params_by_group(group)
     rows = []
     for key in keys:
-        if key in SKIP_KEYS:
-            continue
         schema = PARAM_SCHEMA[key]
         rows.append(html.Div([
             html.Label(schema['label'],
@@ -145,15 +131,3 @@ def create_schema_section(prefix: str, group: str,
         rows.extend(extra_children)
 
     return html.Div(rows)
-
-
-# ==================== 折叠组 ====================
-
-def _details(summary: str, children, open_=False, color='#6c5ce7'):
-    return html.Details([
-        html.Summary(summary, style={
-            'fontWeight': 'bold', 'fontSize': '14px',
-            'cursor': 'pointer',
-        }),
-        html.Div(children, style={'padding': '8px 0 4px 0'}),
-    ], open=open_, style={'marginBottom': '12px'})

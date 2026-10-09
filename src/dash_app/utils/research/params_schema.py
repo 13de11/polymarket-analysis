@@ -8,16 +8,14 @@
 
 # ============ 参数元数据 ============
 # type: 'float' | 'int' | 'bool' | 'enum'
-# tunable: 是否可以在敏感性分析里被扫描
-# group: UI 分组
-# ============ 参数元数据 ============
-# type: 'float' | 'int' | 'bool' | 'enum'
 # ui:   'slider' | 'radio' | 'dropdown' | 'input'
 # group: 'dimension' | 'signal' | 'execution'
+# id:   组件 ID 后缀（最终 ID = f"{prefix}-{id}"），显式声明不猜
 # tunable: 是否可以在敏感性分析里被扫描
 PARAM_SCHEMA = {
     # ==================== 观察维度 ====================
     'price_type': {
+        'id': 'price-type',
         'label': '价格类型', 'type': 'enum',
         'options': ['price_last', 'price_avg'],
         'option_labels': {'price_last': '最新价',
@@ -27,6 +25,7 @@ PARAM_SCHEMA = {
         'tunable': False,
     },
     'window_type': {
+        'id': 'window-type',
         'label': '推文速率窗口', 'type': 'enum',
         'options': ['7d', 'gamestart', 'open', 'custom'],
         'option_labels': {'7d': '7天',
@@ -37,96 +36,78 @@ PARAM_SCHEMA = {
         'group': 'dimension', 'ui': 'radio',
         'tunable': False,
     },
-    'window_custom_hours': {
-        'label': '自定义小时', 'type': 'int',
-        'min': 1, 'max': 2000, 'step': 1, 'default': 168,
-        'group': 'dimension', 'ui': 'input',
-        'tunable': False,
-    },
 
     # ==================== 信号参数 ====================
     'capacity': {
-        'label': '容差',
-        'type': 'float',
+        'id': 'capacity',
+        'label': '容差', 'type': 'float',
         'min': 0.0, 'max': 5.0, 'step': 0.5, 'default': 0.5,
-        'group': 'signal',
-        'ui': 'slider',
-        'tunable': True,
+        'group': 'signal', 'ui': 'slider', 'tunable': True,
     },
     'price_threshold': {
-        'label': '价格变动阈值',
-        'type': 'float',
+        'id': 'price-threshold',
+        'label': '价格变动阈值', 'type': 'float',
         'min': 0.001, 'max': 0.02, 'step': 0.001, 'default': 0.005,
-        'group': 'signal',
-        'ui': 'slider',
-        'tunable': True,
+        'group': 'signal', 'ui': 'slider', 'tunable': True,
     },
     'distance_threshold': {
-        'label': '距离变动阈值',
-        'type': 'float',
+        'id': 'distance-threshold',
+        'label': '距离变动阈值', 'type': 'float',
         'min': 0.5, 'max': 4.0, 'step': 0.1, 'default': 1.5,
-        'group': 'signal',
-        'ui': 'slider',
-        'tunable': True,
+        'group': 'signal', 'ui': 'slider', 'tunable': True,
     },
     'inertia': {
-        'label': '惯性重置',
-        'type': 'int',
+        'id': 'inertia',
+        'label': '惯性重置', 'type': 'int',
         'min': 1, 'max': 12, 'step': 1, 'default': 6,
-        'group': 'signal',
-        'ui': 'slider',
-        'tunable': True,
+        'group': 'signal', 'ui': 'slider', 'tunable': True,
     },
     'momentum_enable': {
-        'label': '动量修正',
-        'type': 'bool',
-        'default': True,
-        'group': 'signal',
-        'ui': 'radio',
-        'tunable': False,
+        'id': 'momentum-enable',
+        'label': '动量修正', 'type': 'bool', 'default': True,
+        'group': 'signal', 'ui': 'radio', 'tunable': False,
     },
     'momentum_coef': {
-        'label': '动量系数',
-        'type': 'float',
+        'id': 'momentum-coef',
+        'label': '动量系数', 'type': 'float',
         'min': 0.01, 'max': 0.30, 'step': 0.01, 'default': 0.10,
-        'group': 'signal',
-        'ui': 'slider',
-        'tunable': True,
+        'group': 'signal', 'ui': 'slider', 'tunable': True,
     },
     'signal_mode': {
+        'id': 'signal-mode',
         'label': '信号显示模式', 'type': 'enum',
         'options': ['full', 'start', 'end'],
         'option_labels': {'full': '首尾',
                           'start': '只首',
                           'end': '只尾'},
         'default': 'start',
-        'group': 'signal', 'ui': 'dropdown',
-        'tunable': False,
+        'group': 'signal', 'ui': 'dropdown', 'tunable': False,
     },
 
     # ==================== 评价假设 ====================
     'initial_capital': {
+        'id': 'initial-capital',
         'label': '初始资金', 'type': 'float',
         'min': 1.0, 'max': 100000.0, 'step': 10.0, 'default': 100.0,
-        'group': 'execution', 'ui': 'input',
-        'tunable': False,
+        'group': 'execution', 'ui': 'input', 'tunable': False,
     },
     'position_mode': {
+        'id': 'position-mode',
         'label': '开仓模式', 'type': 'enum',
         'options': ['fixed_amount', 'fixed_shares'],
         'option_labels': {'fixed_amount': '固定金额',
                           'fixed_shares': '固定份额'},
         'default': 'fixed_amount',
-        'group': 'execution', 'ui': 'radio',
-        'tunable': False,
+        'group': 'execution', 'ui': 'radio', 'tunable': False,
     },
     'position_size': {
+        'id': 'position-size',
         'label': '每次投入', 'type': 'float',
         'min': 0.01, 'max': 100000.0, 'step': 1.0, 'default': 10.0,
-        'group': 'execution', 'ui': 'input',
-        'tunable': False,
+        'group': 'execution', 'ui': 'input', 'tunable': False,
     },
     'backtest_range': {
+        'id': 'range',   # 注意：组件 ID 是 backtest-range，不是 backtest-backtest-range
         'label': '回测区间', 'type': 'enum',
         'options': ['full', 'pre', 'post', 'custom'],
         'option_labels': {'full': '完整周期',
@@ -134,8 +115,7 @@ PARAM_SCHEMA = {
                           'post': 'gamestart → 结束',
                           'custom': '自定义范围'},
         'default': 'full',
-        'group': 'execution', 'ui': 'dropdown',
-        'tunable': False,
+        'group': 'execution', 'ui': 'dropdown', 'tunable': False,
     },
 }
 
