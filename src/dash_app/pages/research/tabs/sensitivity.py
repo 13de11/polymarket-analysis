@@ -6,8 +6,12 @@
 """
 
 import pandas as pd
-from dash import html, dcc, Input, Output, State, callback, no_update
+from dash import html, dcc, Input, Output, State, callback, no_update, ctx
 import plotly.graph_objects as go
+from src.dash_app.state.global_params import (
+    merge as _gp_merge,
+    window_type_to_engine as _wt2e,
+)
 
 from src.dash_app.utils.analysis.sensitivity import SensitivityAnalysis
 from src.dash_app.utils.research.params_schema import (
@@ -229,8 +233,10 @@ def run_research_sensitivity(n_clicks, mode, params, p_single, m_single,
         )
         if result.get('error'):
             return _warn(f"分析失败：{result['error']}"), None
-        return (_render_grid_results(result),
-                {'mode': 'grid', 'result': to_python(result)})
+        best_params = _extract_best_params(result, single=False)
+        return (_render_grid_results(result, best_params),
+                {'mode': 'grid', 'result': to_python(result),
+                 'best_params': best_params})
 
     result = SensitivityAnalysis.run_sensitivity_analysis(
         params, p_single, param_values=None,
@@ -238,9 +244,24 @@ def run_research_sensitivity(n_clicks, mode, params, p_single, m_single,
     )
     if result.get('error'):
         return _warn(f"分析失败：{result['error']}"), None
-    return (_render_single_results(result),
-            {'mode': 'single', 'result': to_python(result)})
+    best_params = _extract_best_params(result, single=True)
+    return (_render_single_results(result, best_params),
+            {'mode': 'single', 'result': to_python(result),
+             'best_params': best_params})
 
+def _extract_best_params(result, single):
+    """从敏感性结果里提取最优参数组合（用于跳转到信号回测）"""
+    best = result.get('best_value') if single else result.get('best_cell')
+    if not best:
+        return None
+
+    if single:
+        return {result['param_name']: best['param_value']}
+    else:
+        return {
+            result['param_x']: best['x'],
+            result['param_y']: best['y'],
+        }
 
 def _warn(msg):
     return html.Div(msg, style={
@@ -252,22 +273,45 @@ def _warn(msg):
 
 # ========== 渲染：单参数 ==========
 
-def _render_single_results(result):
+def _render_single_results(result, best_params=None):
     fig = _create_sensitivity_chart(result)
     best = result.get('best_value')
     children = [dcc.Graph(figure=fig, style={'height': '400px'})]
 
     if best:
-        p, m = result['param_name'], result['metric_key']
-        hint = '最小' if result.get('direction') == 'min' else '最大'
+        p = result['param_name']
+        m = result['metric_key']
+        direction = result.get('direction')
+        hint = '最小' if direction == 'min' else '最大'
         children.append(html.Div([
-            html.Strong(f"✅ 最优参数（{hint}）："),
-            html.Span(f"{PARAM_SCHEMA[p]['label']} = {best['param_value']:.4f}",
-                      style={'color': '#00b894', 'fontWeight': 'bold',
-                             'marginLeft': '4px'}),
-            html.Span(f" → {METRIC_SCHEMA[m]['label']}: "
-                      f"{fmt_metric(m, best['metric_value'])}",
-                      style={'fontWeight': 'bold', 'marginLeft': '8px'}),
+            html.Div([
+                html.Strong(f"✅ 最优参数（{hint}）："),
+                html.Span(
+                    f"{PARAM_SCHEMA[p]['label']} = "
+                    f"{best['param_value']:.4f}",
+                    style={'color': '#00b894', 'fontWeight': 'bold',
+                           'marginLeft': '4px'},
+                ),
+                html.Span(
+                    f" → {METRIC_SCHEMA[m]['label']}: "
+                    f"{fmt_metric(m, best['metric_value'])}",
+                    style={'fontWeight': 'bold', 'marginLeft': '8px'},
+                ),
+            ], style={'display': 'inline-block',
+                      'verticalAlign': 'middle'}),
+            html.Button(
+                '→ 带入信号回测',
+                id='research-sensitivity-import-btn',
+                n_clicks=0,
+                disabled=not best_params,
+                style={
+                    'padding': '6px 14px', 'fontSize': '12px',
+                    'backgroundColor': '#3498db', 'color': 'white',
+                    'border': 'none', 'borderRadius': '4px',
+                    'cursor': 'pointer', 'marginLeft': '15px',
+                    'verticalAlign': 'middle',
+                },
+            ),
         ], style={'padding': '10px', 'backgroundColor': '#e8f8f5',
                   'borderRadius': '6px', 'marginTop': '10px'}))
     else:
@@ -275,7 +319,8 @@ def _render_single_results(result):
             "没有有效数据点（可能是数据不足）",
             style={'padding': '10px', 'color': '#856404',
                    'backgroundColor': '#fff3cd', 'borderRadius': '6px',
-                   'marginTop': '10px'}))
+                   'marginTop': '10px'},
+        ))
     return html.Div(children)
 
 
@@ -322,7 +367,7 @@ def _create_sensitivity_chart(result):
 
 # ========== 渲染：双参数 ==========
 
-def _render_grid_results(result):
+def _render_grid_results(result, best_params=None):
     fig = _create_grid_chart(result)
     best = result.get('best_cell')
     children = [dcc.Graph(figure=fig, style={'height': '500px'})]
@@ -332,14 +377,32 @@ def _render_grid_results(result):
         m = result['metric_key']
         hint = '最小' if result.get('direction') == 'min' else '最大'
         children.append(html.Div([
-            html.Strong(f"✅ 最优组合（{hint}）："),
-            html.Span(f"{PARAM_SCHEMA[p_x]['label']} = {best['x']:.4f}, "
-                      f"{PARAM_SCHEMA[p_y]['label']} = {best['y']:.4f}",
-                      style={'color': '#00b894', 'fontWeight': 'bold',
-                             'marginLeft': '4px'}),
-            html.Span(f" → {METRIC_SCHEMA[m]['label']}: "
-                      f"{fmt_metric(m, best['metric_value'])}",
-                      style={'fontWeight': 'bold', 'marginLeft': '8px'}),
+            html.Div([
+                html.Strong(f"✅ 最优组合（{hint}）："),
+                html.Span(
+                    f"{PARAM_SCHEMA[p_x]['label']} = {best['x']:.4f}, "
+                    f"{PARAM_SCHEMA[p_y]['label']} = {best['y']:.4f}",
+                    style={'color': '#00b894', 'fontWeight': 'bold',
+                           'marginLeft': '4px'}),
+                html.Span(
+                    f" → {METRIC_SCHEMA[m]['label']}: "
+                    f"{fmt_metric(m, best['metric_value'])}",
+                    style={'fontWeight': 'bold', 'marginLeft': '8px'}),
+            ], style={'display': 'inline-block',
+                      'verticalAlign': 'middle'}),
+            html.Button(
+                '→ 带入信号回测',
+                id='research-sensitivity-import-btn',
+                n_clicks=0,
+                disabled=not best_params,
+                style={
+                    'padding': '6px 14px', 'fontSize': '12px',
+                    'backgroundColor': '#3498db', 'color': 'white',
+                    'border': 'none', 'borderRadius': '4px',
+                    'cursor': 'pointer', 'marginLeft': '15px',
+                    'verticalAlign': 'middle',
+                },
+            ),
         ], style={'padding': '10px', 'backgroundColor': '#e8f8f5',
                   'borderRadius': '6px', 'marginTop': '10px'}))
     else:
@@ -440,3 +503,52 @@ def export_sensitivity(n_clicks, store_data):
               f"Metric: {METRIC_SCHEMA[result['metric_key']]['label']}\n")
     content = header + df.to_csv()
     return dict(content=content, filename='sensitivity_grid.csv')
+
+# ==================== 跳转到信号回测 ====================
+
+@callback(
+    Output('global-params', 'data', allow_duplicate=True),
+    Output('url', 'pathname', allow_duplicate=True),
+    Input('research-sensitivity-import-btn', 'n_clicks'),
+    State('research-sensitivity-results-store', 'data'),
+    State('research-params-store', 'data'),
+    State('global-params', 'data'),
+    prevent_initial_call=True,
+)
+def import_sensitivity_to_backtest(n_clicks, results_store,
+                                    research_params, global_params):
+    """把敏感性分析的最优参数带入信号回测"""
+    if not n_clicks or not results_store:
+        return no_update, no_update
+
+    best_params = results_store.get('best_params')
+    if not best_params:
+        return no_update, no_update
+
+    p = _gp_merge(global_params)
+
+    # research 公共参数
+    if research_params:
+        if research_params.get('event_id') is not None:
+            p['event_id'] = research_params['event_id']
+        if research_params.get('market_id') is not None:
+            p['market_id'] = research_params['market_id']
+        if research_params.get('price_type'):
+            p['price_type'] = research_params['price_type']
+
+        wt = research_params.get('window_type')
+        if wt:
+            p['window_type'] = wt
+            eng = _wt2e(wt, research_params.get('window_custom_hours'))
+            p.update(eng)
+
+        for k in ('initial_capital', 'position_mode', 'position_size',
+                  'backtest_range', 'backtest_range_custom'):
+            if research_params.get(k) is not None:
+                p[k] = research_params[k]
+
+    # 最优参数
+    for k, v in best_params.items():
+        p[k] = v
+
+    return p, '/backtest'
