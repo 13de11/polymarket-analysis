@@ -1,13 +1,17 @@
 # src/dash_app/pages/research/tabs/comparison.py
 """
 策略研究 - 策略对比 Tab
-- 动态参数覆盖
-- 参数摘要列
+
+功能：
+- 3 张策略卡片，每张可覆盖任意参数（动态从 STRATEGY_REGISTRY 读）
+- 运行对比：资金曲线 + 绩效散点 + 对比表
+- 对比表每行可一键带入信号回测
 - 导出指标表 / 交易明细 CSV
 """
 
 import pandas as pd
-from dash import html, dcc, Input, Output, State, callback, ctx, no_update
+from dash import (html, dcc, Input, Output, State, callback,
+                  ctx, no_update, ALL)
 import plotly.graph_objects as go
 
 from src.dash_app.utils.comparison.engine import ComparisonEngine
@@ -20,6 +24,10 @@ from src.dash_app.utils.research.strategy_config import (
 )
 from src.dash_app.utils.research.serialize import to_python
 from src.dash_app.utils.ui.table import td, table as tbl
+from src.dash_app.state.global_params import (
+    merge as _gp_merge,
+    window_type_to_engine as _wt2e,
+)
 
 
 STRATEGY_COLORS = {'a': '#3498db', 'b': '#e74c3c', 'c': '#2ecc71'}
@@ -31,7 +39,7 @@ DEFAULT_CARD_OVERRIDES = {
 DEFAULT_ENABLED = {'a', 'b'}
 
 
-# ========== UI ==========
+# ==================== UI ====================
 
 def _create_override_row(idx_lower, param_key):
     schema = PARAM_SCHEMA[param_key]
@@ -67,7 +75,7 @@ def _create_override_row(idx_lower, param_key):
     else:
         row_children.append(dcc.Input(
             id=f'{base_id}-value', type='number', value=default_val,
-            step=schema.get('step', 1), debounce=True,
+            step=schema.get('step', 1), debounce=False,
             style={'width': '62px', 'fontSize': '11px',
                    'padding': '1px 4px', 'border': '1px solid #ced4da',
                    'borderRadius': '3px'},
@@ -93,7 +101,7 @@ def _create_strategy_card(idx_lower, default_name):
             ),
             dcc.Input(
                 id=f'strategy-{idx_lower}-name', type='text',
-                value=default_name, debounce=True,
+                value=default_name, debounce=False,
                 style={'width': '96px', 'fontSize': '13px',
                        'fontWeight': 'bold', 'padding': '2px 4px',
                        'border': '1px solid #ced4da', 'borderRadius': '3px'},
@@ -103,7 +111,8 @@ def _create_strategy_card(idx_lower, default_name):
                                   'verticalAlign': 'middle'}),
         ], style={'marginBottom': '8px'}),
 
-        html.Label('策略类型', style={'fontSize': '11px', 'color': '#6c757d'}),
+        html.Label('策略类型', style={'fontSize': '11px',
+                                      'color': '#6c757d'}),
         dcc.Dropdown(
             id=f'strategy-{idx_lower}-type',
             options=get_strategy_options(),
@@ -129,7 +138,8 @@ def render_comparison_tab():
     return html.Div([
         html.Div([
             html.P(
-                "每个策略 = 左侧基础参数 + 卡片中勾选的覆盖项。",
+                "每个策略 = 左侧基础参数 + 卡片中勾选的覆盖项。"
+                "至少启用 2 个策略才能看出对比。",
                 style={'fontSize': '13px', 'color': '#495057',
                        'marginBottom': '10px'},
             ),
@@ -156,12 +166,14 @@ def render_comparison_tab():
             ]),
         ], style={'padding': '15px', 'backgroundColor': '#f8f9fa',
                   'borderRadius': '8px'}),
+
         dcc.Loading(
             id='research-comparison-loading',
             type='default', color='#6c5ce7',
             children=[html.Div(id='research-comparison-results',
                                style={'marginTop': '15px'})],
         ),
+
         dcc.Store(id='research-comparison-results-store'),
         dcc.Download(id='research-comparison-download'),
     ])
@@ -175,7 +187,7 @@ def _btn_style(color):
     }
 
 
-# ========== 卡片同步 ==========
+# ==================== 卡片同步 ====================
 
 def _register_card_sync(idx_lower):
     prefix = f'strategy-{idx_lower}'
@@ -193,12 +205,15 @@ def _register_card_sync(idx_lower):
 
     def _make_fn():
         def sync(*args):
-            enabled, name, stype = args[0], args[1], args[2] or 'direction_signal'
+            enabled = args[0]
+            name = args[1]
+            stype = args[2] or 'direction_signal'
             rest = args[3:]
             allowed = set(get_strategy_param_keys(stype))
             params = {}
             for i, p in enumerate(all_params):
-                en, val = rest[i * 2], rest[i * 2 + 1]
+                en = rest[i * 2]
+                val = rest[i * 2 + 1]
                 if en and p in allowed and val is not None:
                     params[p] = val
             return {
@@ -220,7 +235,8 @@ def _register_param_visibility(idx_lower):
 
     def _make_vis():
         def update(stype):
-            allowed = set(get_strategy_param_keys(stype or 'direction_signal'))
+            allowed = set(get_strategy_param_keys(
+                stype or 'direction_signal'))
             return tuple(
                 {'marginBottom': '2px', 'lineHeight': '1.7'}
                 if p in allowed else {'display': 'none'}
@@ -239,7 +255,7 @@ for _idx in ['a', 'b', 'c']:
     _register_param_visibility(_idx)
 
 
-# ========== 运行对比 ==========
+# ==================== 运行对比 ====================
 
 @callback(
     Output('research-comparison-results', 'children'),
@@ -273,7 +289,8 @@ def run_research_comparison(n_clicks, params, series, sa, sb, sc):
         return _warn("至少启用一个策略"), None
 
     try:
-        results = ComparisonEngine.run_comparison(params, configs, series or '7d')
+        results = ComparisonEngine.run_comparison(
+            params, configs, series or '7d')
     except Exception as e:
         return _warn(f"运行失败：{type(e).__name__}: {e}"), None
 
@@ -317,9 +334,13 @@ def _results_to_store(results):
     return {'strategies': strategies}
 
 
+# ==================== 渲染 ====================
+
 def _render_results(results):
-    errors = {k: v for k, v in results.items() if v.get('status') == 'error'}
-    oks = {k: v for k, v in results.items() if v.get('status') == 'ok'}
+    errors = {k: v for k, v in results.items()
+              if v.get('status') == 'error'}
+    oks = {k: v for k, v in results.items()
+           if v.get('status') == 'ok'}
     children = []
 
     for name, r in errors.items():
@@ -333,11 +354,18 @@ def _render_results(results):
         }))
 
     if oks:
-        children.append(dcc.Graph(figure=_create_comparison_chart(oks),
-                                  style={'height': '400px'}))
-        children.append(html.H5("📊 绩效指标对比",
-                                style={'margin': '15px 0 10px 0',
-                                       'color': '#2c3e50'}))
+        children.append(dcc.Graph(
+            figure=_create_comparison_chart(oks),
+            style={'height': '400px'},
+        ))
+        children.append(dcc.Graph(
+            figure=_create_metric_scatter(oks),
+            style={'height': '380px', 'marginTop': '10px'},
+        ))
+        children.append(html.H5(
+            "📊 绩效指标对比",
+            style={'margin': '15px 0 10px 0', 'color': '#2c3e50'},
+        ))
         children.append(_create_comparison_table(oks))
 
     return html.Div(children)
@@ -356,17 +384,76 @@ def _create_comparison_chart(results):
             name=name, line=dict(color=color, width=2),
         ))
     fig.update_layout(
-        title='策略资金曲线对比', xaxis_title='时间', yaxis_title='权益 ($)',
-        hovermode='x', height=400,
+        title='策略资金曲线对比', xaxis_title='时间',
+        yaxis_title='权益 ($)', hovermode='x', height=400,
         legend=dict(orientation='h', yanchor='bottom', y=1.02,
                     xanchor='center', x=0.5),
     )
     return fig
 
 
+def _create_metric_scatter(results):
+    """策略在「收益-夏普」平面的散点图"""
+    names, xs, ys, sizes, colors, hovers, marker_colors = \
+        [], [], [], [], [], [], []
+
+    for name, r in results.items():
+        m = r.get('metrics') or {}
+        x = m.get('total_return')
+        y = m.get('sharpe_ratio')
+        if x is None or y is None:
+            continue
+        trades = int(m.get('total_trades', 0) or 0)
+        dd = float(m.get('max_drawdown_pct', 0) or 0)
+
+        names.append(name)
+        xs.append(float(x))
+        ys.append(float(y))
+        sizes.append(10 + min(trades, 50) * 1.4)
+        colors.append(dd)
+        marker_colors.append(
+            (r.get('config') or {}).get('color') or '#888')
+        hovers.append(
+            f"<b>{name}</b><br>"
+            f"总收益: {x:.2f}%<br>"
+            f"夏普: {y:.2f}<br>"
+            f"交易次数: {trades}<br>"
+            f"最大回撤: {dd:.2f}%<br>"
+            f"胜率: {m.get('win_rate', 0):.1f}%<br>"
+            f"盈亏比: {m.get('profit_factor', 0):.2f}"
+        )
+
+    if not names:
+        return go.Figure()
+
+    fig = go.Figure(go.Scatter(
+        x=xs, y=ys, mode='markers+text',
+        text=names, textposition='top center',
+        textfont=dict(size=11, color='#2c3e50'),
+        marker=dict(
+            size=sizes, color=colors,
+            colorscale='RdYlGn_r', showscale=True,
+            colorbar=dict(title='回撤%', thickness=12),
+            line=dict(color=marker_colors, width=3),
+            opacity=0.9,
+        ),
+        hovertext=hovers, hoverinfo='text',
+    ))
+    fig.add_hline(y=0, line_dash='dash', line_color='#adb5bd')
+    fig.add_vline(x=0, line_dash='dash', line_color='#adb5bd')
+    fig.update_layout(
+        title='策略绩效散点图（点大小=交易次数，'
+              '填充色=回撤，圈色=策略标识）',
+        xaxis_title='总收益率 (%)', yaxis_title='夏普比率',
+        height=380, margin=dict(l=60, r=80, t=60, b=50),
+        showlegend=False,
+    )
+    return fig
+
+
 def _create_comparison_table(results):
     headers = ['策略', '参数覆盖', '状态', '交易次数', '胜率', '盈亏比',
-               '总收益', '最大回撤', '夏普', '耗时(s)']
+               '总收益', '最大回撤', '夏普', '耗时(s)', '操作']
     rows = []
     for name, r in results.items():
         m = r.get('metrics') or {}
@@ -387,11 +474,22 @@ def _create_comparison_table(results):
                           m.get('max_drawdown_pct', 0))),
             td(fmt_metric('sharpe_ratio', m.get('sharpe_ratio', 0))),
             td(f"{r.get('elapsed_sec', 0):.2f}"),
+            td(html.Button(
+                '→ 信号回测',
+                id={'type': 'research-import-btn', 'index': name},
+                n_clicks=0,
+                style={
+                    'padding': '4px 10px', 'fontSize': '11px',
+                    'backgroundColor': '#3498db', 'color': 'white',
+                    'border': 'none', 'borderRadius': '4px',
+                    'cursor': 'pointer',
+                },
+            )),
         ]))
     return tbl(headers, rows)
 
 
-# ========== 导出 ==========
+# ==================== 导出 ====================
 
 @callback(
     Output('research-comparison-download', 'data'),
@@ -437,3 +535,66 @@ def export_comparison(n_metrics, n_trades, store_data):
         df = pd.DataFrame(rows)
     return dcc.send_data_frame(df.to_csv, 'strategy_trades.csv',
                                index=False, encoding='utf-8-sig')
+
+
+# ==================== 跳转到信号回测 ====================
+
+@callback(
+    Output('global-params', 'data', allow_duplicate=True),
+    Output('url', 'pathname'),
+    Input({'type': 'research-import-btn', 'index': ALL}, 'n_clicks'),
+    State('research-params-store', 'data'),
+    State('research-strategy-a-store', 'data'),
+    State('research-strategy-b-store', 'data'),
+    State('research-strategy-c-store', 'data'),
+    State('global-params', 'data'),
+    prevent_initial_call=True,
+)
+def import_strategy_to_backtest(clicks, research_params,
+                                 sa, sb, sc, global_params):
+    """把策略对比表里某一行策略的参数带入信号回测"""
+    if not any(c for c in (clicks or []) if c):
+        return no_update, no_update
+
+    triggered = ctx.triggered_id
+    if not isinstance(triggered, dict):
+        return no_update, no_update
+    if triggered.get('type') != 'research-import-btn':
+        return no_update, no_update
+
+    strategy_name = triggered.get('index')
+
+    target_strategy = None
+    for sd in (sa, sb, sc):
+        if sd and sd.get('enabled') and sd.get('name') == strategy_name:
+            target_strategy = sd
+            break
+    if not target_strategy:
+        return no_update, no_update
+
+    p = _gp_merge(global_params)
+
+    if research_params:
+        if research_params.get('event_id') is not None:
+            p['event_id'] = research_params['event_id']
+        if research_params.get('market_id') is not None:
+            p['market_id'] = research_params['market_id']
+        if research_params.get('price_type'):
+            p['price_type'] = research_params['price_type']
+
+        wt = research_params.get('window_type')
+        if wt:
+            p['window_type'] = wt
+            eng = _wt2e(wt, research_params.get('window_custom_hours'))
+            p.update(eng)
+
+        for k in ('initial_capital', 'position_mode', 'position_size',
+                  'backtest_range', 'backtest_range_custom'):
+            if research_params.get(k) is not None:
+                p[k] = research_params[k]
+
+    for k, v in (target_strategy.get('params') or {}).items():
+        if v is not None:
+            p[k] = v
+
+    return p, '/backtest'
