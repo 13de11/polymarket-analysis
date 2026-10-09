@@ -19,14 +19,18 @@ from src.dash_app.utils.research.params_schema import (
 
 
 # 参数 key → 组件 ID 后缀（处理特殊命名）
+# 未列出的 key 会自动把下划线换成连字符
 ID_SUFFIX = {
-    'window_custom_hours': 'window-custom',
     'backtest_range': 'range',
 }
 
+# 不在 schema 自动生成中出现的 key（由 extra_children 手写提供）
+SKIP_KEYS = {'window_custom_hours'}
+
 
 def _make_id(prefix: str, key: str) -> str:
-    return f"{prefix}-{ID_SUFFIX.get(key, key)}"
+    suffix = ID_SUFFIX.get(key, key.replace('_', '-'))
+    return f"{prefix}-{suffix}"
 
 
 def get_component_id(prefix: str, key: str) -> str:
@@ -125,6 +129,8 @@ def create_schema_section(prefix: str, group: str,
     keys = get_params_by_group(group)
     rows = []
     for key in keys:
+        if key in SKIP_KEYS:
+            continue
         schema = PARAM_SCHEMA[key]
         rows.append(html.Div([
             html.Label(schema['label'],
