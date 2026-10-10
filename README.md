@@ -34,6 +34,9 @@ Polymarket_Analysis/
 │       └── run_all.py
 │
 ├── src/dash_app/                 # Dash 应用
+│   ├── state/                    # 全局状态（处理层共享）
+│   │   └── global_params.py      # 处理层共享参数结构 + helper
+│   │
 │   ├── pages/
 │   │   ├── home.py
 │   │   ├── price_tweet_analysis.py
@@ -41,23 +44,29 @@ Polymarket_Analysis/
 │   │   │   ├── layout.py
 │   │   │   ├── callbacks.py
 │   │   │   └── explorer.py
+│   │   │
+│   │   ├── shared/               # 跨页面共享组件
+│   │   │   └── params_panel.py   # 参数面板生成器（schema 驱动）
+│   │   │
 │   │   ├── backtest/             # 预测回测
 │   │   │   ├── __init__.py       # 仅 docstring
 │   │   │   ├── layout.py         # 页面布局
 │   │   │   ├── callbacks.py      # 所有 @callback
-│   │   │   ├── params_panel.py   # 参数面板（仅 UI）
+│   │   │   ├── params_panel.py   # 参数面板（调用 shared 生成器）
 │   │   │   └── tabs/
 │   │   │       ├── preview.py
 │   │   │       ├── overview.py
 │   │   │       ├── trades.py
 │   │   │       └── evaluation.py
+│   │   │
 │   │   └── research/             # 策略研究
 │   │       ├── layout.py
 │   │       ├── filter_panel.py
 │   │       ├── experiment_manager.py   # 实验保存/加载栏
 │   │       └── tabs/
-│   │           ├── comparison.py
-│   │           └── sensitivity.py
+│   │           ├── comparison.py       # 策略对比
+│   │           ├── sensitivity.py      # 单/双参数敏感性
+│   │           └── batch.py            # 跨事件批量研究
 │   │
 │   └── utils/
 │       ├── data_loader.py        # 数据读取（lru_cache）
@@ -70,7 +79,8 @@ Polymarket_Analysis/
 │       │   ├── strategy_config.py    # 策略类型注册 + StrategyConfig
 │       │   ├── experiment.py         # ExperimentConfig 数据结构
 │       │   ├── storage.py            # ExperimentStorage 抽象
-│       │   └── serialize.py          # numpy/datetime JSON 序列化
+│       │   ├── serialize.py          # numpy/datetime JSON 序列化
+│       │   └── batch.py              # BatchEngine 多事件批量研究引擎
 │       ├── signal/generator.py   # 方向信号生成
 │       ├── backtest/
 │       │   ├── engine.py         # 交易执行
@@ -97,7 +107,7 @@ Polymarket_Analysis/
 | `/analysis` | 价格-推文分析 | 事件内各市场价格与推文关系 |
 | `/insights` | 数据分析中心 | 命中模式、推文热度图谱（4 Tab） |
 | `/backtest` | 预测回测 | 单事件回测与评估（4 Tab） |
-| `/research` | 策略研究 | 策略对比、单/双参数敏感性、实验保存（2 Tab） |
+| `/research` | 策略研究 | 策略对比、单/双参数敏感性、跨事件批量（3 Tab） |
 
 ---
 
@@ -160,8 +170,11 @@ git pull origin main
 
 1. 本地跑 `python scripts/build_final_db.py`
 2. 登录 PythonAnywhere → **Files** → `data/` 目录
-3. 上传 `elon_tweets_analysis.db`（覆盖）
-4. Web 页面点 **Reload**
+3. **先删** `elon_tweets_analysis.db-wal` 和 `elon_tweets_analysis.db-shm`
+4. 再上传 `elon_tweets_analysis.db`（覆盖）
+5. Web 页面点 **Reload**
+
+> `.db-wal` / `.db-shm` 是 SQLite WAL 模式的附属文件，数据更新时若不清掉可能读到旧数据。
 
 ### 3. 缓存说明
 
@@ -169,15 +182,16 @@ git pull origin main
 
 - 数据更新后如需立刻生效：重启应用
 - 数据更新后不重启：第二天自动失效
-- 手动清缓存：调用 `data_loader.clear_caches()` 或 `prepare.clear_prepare_cache()`
+- 手动清缓存：`data_loader.clear_caches()` / `prepare.clear_prepare_cache()`
 
-### 4. PythonAnywhere 常见坑
+### 4. PythonAnywhere 常见坑（已踩过的）
 
 - **Web 标签 → Code 区**：
-  - `Source code` 和 `Working directory` 都必须填 `/home/13de11/polymarket-analysis`
+  - `Source code` 和 `Working directory` **必须都填** `/home/13de11/polymarket-analysis`
   - 填错会导致 Dash 版本错位、样式不一致（曾踩过坑）
-- **Python 版本**：Web app 的 Python 版本要和 Bash 里默认 `python3.x` 一致，否则 `pip install` 装的包 web 进程看不到
-- **依赖升级**：`pip install --upgrade "dash==4.4.1"` 后必须 Web 页面 Reload + 浏览器 `Ctrl + Shift + R`
+- **Python 版本**：Web app 的 Python 版本要与 Bash 里 `python -c "import dash; print(dash.__version__)"` 一致
+- **依赖升级后**：Web 页面 Reload + 浏览器 `Ctrl + Shift + R`
+- **首次访问 `/research` 或 `/backtest`**：会慢 1~2 秒（建 `lru_cache`），之后正常
 
 ---
 
@@ -220,6 +234,8 @@ git pull origin main
 - 回测结束强制平仓
 - 仅做多
 
+**定位说明**：本工具的回测**不是策略优化器**，而是**信号处理效果的评价器**——交易规则固定为 ↑开仓/↓平仓，回测用于感知信号在不同参数下的效果。
+
 ---
 
 ## 🔬 策略研究模块
@@ -227,13 +243,13 @@ git pull origin main
 ### 数据流
 
 ```
-PARAM_SCHEMA / METRIC_SCHEMA        参数与指标元数据
+PARAM_SCHEMA / METRIC_SCHEMA        参数与指标元数据（单一数据源）
         ↓
 STRATEGY_REGISTRY                   策略类型注册表
         ↓
 StrategyConfig                      一次回测的完整配置
         ↓
-ComparisonEngine / SensitivityAnalysis  对比 / 敏感性
+ComparisonEngine / SensitivityAnalysis / BatchEngine
         ↓
 run_backtest(params)                回测内核（与 /backtest 共用）
 ```
@@ -241,22 +257,28 @@ run_backtest(params)                回测内核（与 /backtest 共用）
 ### 核心能力
 
 1. **策略对比**：3 张策略卡片，每张可覆盖任意参数（动态从 `STRATEGY_REGISTRY` 读）
-2. **绩效散点图**：收益-夏普平面，点大小=交易次数，填充色=回撤，圈色=策略标识
-3. **单参数敏感性**：扫描范围从 `PARAM_SCHEMA` 自动生成，支持指标方向（max / min）
-4. **双参数网格**：热力图，色阶按指标方向自动反转
+   - 资金曲线对比 + 绩效散点图（收益-夏普平面）+ 指标对比表
+   - 导出指标表 / 交易明细 CSV
+2. **单参数敏感性**：扫描范围从 `PARAM_SCHEMA` 自动生成，支持指标方向（max / min）
+3. **双参数网格**：热力图，色阶按指标方向自动反转
+4. **跨事件批量研究**：
+   - 事件多选（默认全选）
+   - 聚合统计表（收益均值 / 中位数 / 标准差 / 正事件率）
+   - 事件 × 策略 收益矩阵热力图
+   - 逐事件明细 DataTable（排序 / 分页 / 导出）
 5. **实验保存/加载**：`ExperimentConfig` 序列化为 JSON，可下载/上传
-6. **结果导出**：对比指标表、交易明细、敏感性曲线、网格矩阵均可导出 CSV
 
 ### 关键文件
 
-- `utils/research/params_schema.py`：所有参数的 label / min / max / step / tunable
+- `utils/research/params_schema.py`：所有参数的 label / min / max / step / **id** / group / ui
 - `utils/research/strategy_config.py`：策略类型注册 + `StrategyConfig`
 - `utils/research/experiment.py`：`ExperimentConfig`（带 version，预留迁移）
 - `utils/research/storage.py`：`ExperimentStorage` 抽象（为将来多用户准备）
+- `utils/research/batch.py`：`BatchEngine` 多事件批量研究引擎
 
 ### 扩展方式
 
-- **加参数**：`PARAM_SCHEMA` 加一条 → 卡片自动出现输入框
+- **加参数**：`PARAM_SCHEMA` 加一条 → 面板自动出现
 - **加策略**：`STRATEGY_REGISTRY` 加一条 → 下拉自动出现 → 需在 `runner.py` 里按 `strategy_id` 分发（**分发逻辑尚未实现**）
 
 ---
@@ -268,9 +290,9 @@ run_backtest(params)                回测内核（与 /backtest 共用）
 ```
 点击「运行回测」
     ↓
-save_params                    从组件读值 → params-store（带 _trigger 标记）
+save_params                    从组件读值 → global-params（带 _trigger 标记）
     ↓
-cache_backtest_result          监听 params-store；_trigger='run' 时才跑
+cache_backtest_result          监听 global-params；_trigger='run' 时才跑
     ↓
 backtest-result-store          结果存 store
     ↓
@@ -284,25 +306,30 @@ render_tab_content             4 个 tab 从 store 读
 ### 4 个 Tab
 
 | Tab | 内容 |
-|-----|------|
+|------|------|
 | 🔍 信号预览 | 价格 + 推文 + 信号点（上图）/ 估算总量 vs 实际累计推文（下图） |
 | 📊 绩效概览 | 资金曲线（含买卖点标记）+ 核心绩效 8 卡片 + 盈亏细节 5 卡片 |
 | 📋 交易明细 | DataTable（排序 / 分页 / 导出）+ 外置筛选（结果 / 平仓原因 / 只看部分成交） |
 | 📈 策略评估 | 多窗口准确率 + 策略 vs 基线（20 次均值 ± 标准差）+ 交易分布直方图 + 持仓周期分桶 |
 
+### 参数面板
+
+- 由 `pages/shared/params_panel.py` **schema 驱动生成**
+- 分四步折叠：数据选择 / 观察维度 / 信号参数 / 评价假设
+- 组件 ID 由 `PARAM_SCHEMA[key]['id']` 显式声明
+
 ### 特殊说明
 
-- **两个按钮**：`刷新信号预览`（只更新 preview）/ `运行回测`（跑完整回测，刷新其余 tab）
-- **回调风格**：backtest 模块已统一到现代 `@callback` 风格（`callbacks.py`）；其他模块仍是 `register_*(app)` 老风格
+- **两个按钮**：`刷新信号预览`（只更新 preview）/ `运行回测`（跑完整回测）
+- **回调风格**：backtest 模块已统一到现代 `@callback` 风格（`callbacks.py`）；research / insights 仍是 `register_*(app)` 老风格
 - **失败提示**：回测失败时状态栏和内容区显示红字原因
-- **输入即时生效**：`dcc.Input` 无 debounce，点按钮即用当前值
-- **竞态修复**：`save_params` 输出带 `_trigger` 标记，`cache_backtest_result` 监听 `params-store` 而非按钮，Dash 拓扑序保证一次点击即生效
+- **输入即时生效**：`dcc.Input` 无 debounce
 
 ---
 
 ## 🎨 表格样式工具
 
-`utils/ui/table.py` 提供 `td` / `th` / `table` 三件套，统一表头与单元格居中对齐：
+`utils/ui/table.py` 提供 `td` / `th` / `table` 三件套：
 
 ```python
 from src.dash_app.utils.ui.table import td, table as tbl
@@ -313,7 +340,7 @@ return tbl(['列1', '列2'], rows)
 
 `td` 支持任意 CSS 属性作为 kwargs。
 
-**注意**：backtest 的"交易明细"用 `dash_table.DataTable`（支持排序 / 筛选 / 分页 / 导出），不走这个工具。其他手写表格用 `ui/table.py`。
+**注意**：backtest 交易明细、research 批量研究明细用 `dash_table.DataTable`（排序/筛选/分页/导出），不走这个工具。
 
 ---
 
@@ -325,22 +352,20 @@ return tbl(['列1', '列2'], rows)
 
 | 编号 | 方向 | 模块 | 备注 |
 |------|------|------|------|
-| M1~M3 | 扫描 `insights/` / `price_tweet_analysis.py` / `home.py` 的表格对齐 | 阶段 6 | 用 `utils/ui/table.py` 统一 |
-| M4 | 检查上述三页面是否有"多次重跑"架构问题 | 阶段 6 | 参考 backtest 的坑 |
-| R1 | 多事件批量研究：选 N 个事件跑同一套策略，汇总对比 | 策略研究 | 当前只能单事件 |
+| M1~M3 | 扫描 `insights/` / `price_tweet_analysis.py` / `home.py` 的表格对齐 | 观察层 | 用 `utils/ui/table.py` 统一 |
+| M4 | 检查上述三页面是否有"多次重跑"架构问题 | 观察层 | 参考 backtest 的坑 |
+| R4 | 策略类型扩展：`buy_hold` / `reverse_signal` / 双均线 | 策略研究 | 需在 `runner.py` 按 `strategy_id` 分发 |
+| R5 | 窗口作为策略级覆盖项（A/B/C 用不同 `window_type`） | 策略研究 | 现在窗口是全局基础参数 |
 
 ### 🟠 中优先
 
 | 编号 | 方向 | 模块 | 备注 |
 |------|------|------|------|
-| R4 | 策略类型扩展：`buy_hold` / `reverse_signal` / 双均线 | 策略研究 | 需在 `runner.py` 按 `strategy_id` 分发 |
-| R5 | 窗口作为策略级覆盖项（A/B/C 用不同 `window_type`） | 策略研究 | 现在窗口是全局基础参数 |
-| E1 | 多事件聚合统计：跨事件看策略稳定性 | 策略研究 | 与 R1 相关 |
-| B3 | 参数面板统一到 `PARAM_SCHEMA` | 回测 + 研究 | 两边高度重复 |
-| B6 | "应用到 research" / "应用到 backtest" 按钮 | 回测 + 研究 | 参数互通 |
+| **C1** | **跨页带参功能（挂起）** | 全局 | 试过多种方案均失败，代码保留但按钮隐藏，实际点击不生效 |
+| E1 | 多事件聚合统计：跨事件看策略稳定性 | 策略研究 | 与批量研究相关 |
+| B3 | 参数面板统一到 schema（research 侧） | 策略研究 | backtest 已迁移，research 待做 |
 | T1 | 回调风格统一（research / insights 尚未统一） | 全局 | `@callback` vs `register_*(app)` |
 | T2 | Tab 改用 `dcc.Tabs` children 机制（research） | 全局 | 现在用 `style={'display'}` 切换 |
-| T5b | 敏感性/网格分析多线程或向量化提速 | 基础设施 | 纯 Python 循环是当前瓶颈 |
 
 ### 🟡 低优先 / 技术债
 
@@ -349,12 +374,13 @@ return tbl(['列1', '列2'], rows)
 | T3 | `generator.py` 状态管理重构（`prev_distance` 双重更新） | 信号 | 策略定型后做 |
 | T4 | `baseline.random_signal` 风险暴露公平性（全押 vs 固定金额） | 回测 | 基线对比不严格公平 |
 | T7 | 研究面板懒加载（`create_research_panel` 不查库） | 策略研究 | 缓存后已不痛 |
+| T5b | 敏感性/网格分析多线程或向量化提速 | 基础设施 | 纯 Python 循环是当前瓶颈 |
 
 ### 🔵 远期
 
 | 编号 | 方向 | 备注 |
 |------|------|------|
-| R6 | 实验服务器端存储（`LocalFileStorage` 接口已就绪） | 数据落在 `data/experiments/`，前端改为"保存到服务器" |
+| R6 | 实验服务器端存储（`LocalFileStorage` 接口已就绪） | 数据落在 `data/experiments/` |
 | R7 | 多用户登录 + 历史记录 | 最终目标，涉及 `flask_login` 或 session |
 | E2 | 参数寻优（敏感性反过来自动搜最优） | 现有扫描的延伸 |
 | E3 | 实时数据接入（事件进行中也能分析） | 架构变化大 |
@@ -368,3 +394,12 @@ return tbl(['列1', '列2'], rows)
 - `archives/` 为旧项目备份，不参与 Web
 - 部署用精简库 `elon_tweets_analysis.db`（约 18 MB）
 - `_test_*.py` / `_find_*.py` 为本地调试脚本，不入 git
+- **当前全局 store**：`global-params` 定义在 `app_new.py`，结构见 `state/global_params.py`
+
+---
+
+## 📌 版本状态
+
+- **稳定可用**：观察层（`/analysis`、`/insights`）、回测模块、策略研究三 Tab、实验保存/加载
+- **已知失效**：跨页带参（comparison / sensitivity / batch → backtest），按钮保留但无效
+- **近期重构重点**：`backtest` 已迁移到 schema 驱动面板 + 全局 store；research 侧待迁移

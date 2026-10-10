@@ -7,7 +7,7 @@ app_new.py 里有一处 import 本模块，触发注册。
 """
 
 import dash
-from dash import html, Input, Output, State, callback, no_update
+from dash import (html, Input, Output, State, callback, no_update)
 import pandas as pd
 
 from src.dash_app.utils.data_loader import (
@@ -44,8 +44,9 @@ def toggle_custom_range(range_type, pathname):
     Output('backtest-market-selector', 'value'),
     Input('backtest-event-selector', 'value'),
     Input('url', 'pathname'),
+    State('global-params', 'data'),
 )
-def update_markets(event_id, pathname):
+def update_markets(event_id, pathname, global_params):
     if pathname != '/backtest':
         return no_update, no_update
     if not event_id:
@@ -61,9 +62,17 @@ def update_markets(event_id, pathname):
         else:
             label = f"{r_start}-{int(row['range_end'])}"
         options.append({'label': label, 'value': row['id']})
-    target = get_target_market(event_id)
-    default_value = target['id'] if target else None
-    return options, default_value
+
+    # 优先使用 global-params 里的 market_id（且必须在当前 options 里）
+    target_id = None
+    if global_params and global_params.get('market_id'):
+        mid = global_params['market_id']
+        if any(o['value'] == mid for o in options):
+            target_id = mid
+    if target_id is None:
+        target = get_target_market(event_id)
+        target_id = target['id'] if target else None
+    return options, target_id
 
 
 @callback(
@@ -71,8 +80,9 @@ def update_markets(event_id, pathname):
     Output('backtest-event-selector', 'value'),
     Input('series-selector', 'value'),
     Input('url', 'pathname'),
+    State('global-params', 'data'),
 )
-def update_backtest_events_on_series_change(series, pathname):
+def update_backtest_events_on_series_change(series, pathname, global_params):
     if pathname != '/backtest':
         return no_update, no_update
     events_df = get_elon_tweet_events(series)
@@ -86,18 +96,27 @@ def update_backtest_events_on_series_change(series, pathname):
         if target:
             r_start = int(target['range_start'])
             r_end = (int(target['range_end'])
-                     if target['range_end'] and not pd.isna(target['range_end'])
+                     if target['range_end']
+                     and not pd.isna(target['range_end'])
                      else '∞')
             label = f"{row['slug']} (命中: {r_start}-{r_end})"
         else:
             label = row['slug']
         event_options.append({'label': label, 'value': row['id']})
-    default_event = events_df.iloc[-1]['id'] if not events_df.empty else None
-    return event_options, default_event
+
+    # 优先使用 global-params 里的 event_id（且必须在当前 series 里）
+    target_event = None
+    if global_params and global_params.get('event_id'):
+        eid = global_params['event_id']
+        if eid in event_ids:
+            target_event = eid
+    if target_event is None:
+        target_event = events_df.iloc[-1]['id']
+    return event_options, target_event
 
 
 @callback(
-    Output('backtest-params-store', 'data'),
+    Output('global-params', 'data'),
     Input('backtest-run-btn', 'n_clicks'),
     Input('backtest-preview-btn', 'n_clicks'),
     State('backtest-event-selector', 'value'),
@@ -184,7 +203,7 @@ def toggle_custom_window(window_type):
 
 @callback(
     Output('backtest-result-store', 'data'),
-    Input('backtest-params-store', 'data'),
+    Input('global-params', 'data'),
     prevent_initial_call=True,
 )
 def cache_backtest_result(params):
@@ -220,7 +239,7 @@ def _placeholder(msg):
     Input('backtest-tabs', 'value'),
     Input('backtest-result-store', 'data'),
     Input('backtest-preview-btn', 'n_clicks'),
-    State('backtest-params-store', 'data'),
+    State('global-params', 'data'),
     State('series-selector', 'value'),
 )
 def render_tab_content(tab_name, cached_result, preview_n, params, series):

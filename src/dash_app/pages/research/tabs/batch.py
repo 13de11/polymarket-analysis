@@ -10,7 +10,7 @@
 策略复用「策略对比」Tab 里配置好的卡片（A/B/C）。
 """
 
-from dash import html, dcc, Input, Output, State, callback
+from dash import html, dcc, Input, Output, State, callback, ctx, no_update
 import plotly.graph_objects as go
 
 from src.dash_app.utils.data_loader import (
@@ -20,6 +20,11 @@ from src.dash_app.utils.data_loader import (
 from src.dash_app.utils.research.batch import BatchEngine
 from src.dash_app.utils.research.strategy_config import StrategyConfig
 from src.dash_app.utils.ui.table import td, table as tbl
+
+from src.dash_app.state.global_params import (
+    merge as _gp_merge,
+    window_type_to_engine as _wt2e,
+)
 
 
 STRATEGY_COLORS = {'a': '#3498db', 'b': '#e74c3c', 'c': '#2ecc71'}
@@ -57,6 +62,40 @@ def render_batch_tab():
                     'fontWeight': 'bold', 'cursor': 'pointer',
                 },
             ),
+
+            # ---- 跳转区（跑完批量后可用）----
+            html.Div([
+                html.Label("把某个事件带入信号回测深挖：",
+                           style={'fontSize': '12px',
+                                  'color': '#495057',
+                                  'marginRight': '8px',
+                                  'verticalAlign': 'middle'}),
+                dcc.Dropdown(
+                    id='research-batch-jump-event',
+                    options=[],
+                    value=None,
+                    placeholder='选择事件',
+                    clearable=True,
+                    style={'width': '280px',
+                           'display': 'inline-block',
+                           'verticalAlign': 'middle',
+                           'marginRight': '8px'},
+                ),
+                html.Button(
+                    '→ 带入信号回测',
+                    id='research-batch-jump-btn',
+                    n_clicks=0,
+                    disabled=True,
+                    style={
+                        'padding': '6px 14px', 'fontSize': '12px',
+                        'backgroundColor': '#3498db', 'color': 'white',
+                        'border': 'none', 'borderRadius': '4px',
+                        'cursor': 'pointer',
+                        'verticalAlign': 'middle',
+                    },
+                ),
+            ], id='research-batch-jump-area',
+               style={'display': 'none', 'marginTop': '12px'}),
         ], style={'padding': '15px', 'backgroundColor': '#f8f9fa',
                   'borderRadius': '8px'}),
         dcc.Loading(
@@ -92,6 +131,9 @@ def _populate_batch_events(series):
 
 @callback(
     Output('research-batch-results', 'children'),
+    Output('research-batch-jump-event', 'options'),
+    Output('research-batch-jump-event', 'value'),
+    Output('research-batch-jump-area', 'style'),
     Input('research-batch-run-btn', 'n_clicks'),
     State('research-params-store', 'data'),
     State('series-selector', 'value'),
@@ -102,10 +144,14 @@ def _populate_batch_events(series):
     prevent_initial_call=True,
 )
 def run_batch(n_clicks, base_params, series, sa, sb, sc, selected_events):
+    _hidden = {'display': 'none', 'marginTop': '12px'}
+    _shown = {'display': 'block', 'marginTop': '12px'}
+
     if not n_clicks:
-        return html.Div()
+        return (no_update, no_update, no_update, no_update)
     if not base_params:
-        return _warn("请先在左侧选择事件和市场（作为参数模板）")
+        return (_warn("请先在左侧选择事件和市场（作为参数模板）"),
+                [], None, _hidden)
 
     series = series or '7d'
 
@@ -121,12 +167,14 @@ def run_batch(n_clicks, base_params, series, sa, sb, sc, selected_events):
             color=STRATEGY_COLORS.get(idx),
         ))
     if not configs:
-        return _warn("至少启用一个策略（在「策略对比」Tab 里勾选）")
+        return (_warn("至少启用一个策略（在「策略对比」Tab 里勾选）"),
+                [], None, _hidden)
 
-    # 2. 取事件 + 市场，按用户选择过滤
+    # 2. 取事件 + 市场
     all_pairs, slug_map = _get_all_pairs(series)
     if not all_pairs:
-        return _warn(f"系列 {series} 下没有可用的事件+市场组合")
+        return (_warn(f"系列 {series} 下没有可用的事件+市场组合"),
+                [], None, _hidden)
 
     if selected_events:
         selected_set = set(selected_events)
@@ -136,7 +184,7 @@ def run_batch(n_clicks, base_params, series, sa, sb, sc, selected_events):
         pairs = all_pairs
 
     if not pairs:
-        return _warn("请至少选择一个事件")
+        return (_warn("请至少选择一个事件"), [], None, _hidden)
 
     # 3. 跑批量
     try:
@@ -144,13 +192,23 @@ def run_batch(n_clicks, base_params, series, sa, sb, sc, selected_events):
             base_params, configs, pairs, series=series,
         )
     except Exception as e:
-        return _warn(f"批量研究失败：{type(e).__name__}: {e}")
+        return (_warn(f"批量研究失败：{type(e).__name__}: {e}"),
+                [], None, _hidden)
 
     if not result or not result.get('per_event'):
-        return _warn("批量研究无结果")
+        return (_warn("批量研究无结果"), [], None, _hidden)
 
-    # 4. 渲染
-    return _render_results(result, configs, slug_map)
+    # 4. 渲染 + 准备跳转下拉
+    jump_options = []
+    for eid in result['per_event'].keys():
+        slug = slug_map.get(eid, '')
+        label = _short_slug(slug, max_len=50) if slug else str(eid)
+        jump_options.append({'label': label, 'value': eid})
+
+    return (_render_results(result, configs, slug_map),
+            jump_options,
+            None,
+            _shown)
 
 
 # ==================== 辅助 ====================
@@ -372,3 +430,50 @@ def _create_per_event_datatable(per_event, configs, slug_map):
              'minWidth': '90px'},
         ],
     )
+
+@callback(
+    Output('research-batch-jump-btn', 'disabled'),
+    Input('research-batch-jump-event', 'value'),
+)
+def _toggle_jump_btn(event_id):
+    return not bool(event_id)
+
+@callback(
+    Output('global-params', 'data', allow_duplicate=True),
+    Output('url', 'pathname', allow_duplicate=True),
+    Input('research-batch-jump-btn', 'n_clicks'),
+    State('research-batch-jump-event', 'value'),
+    State('research-params-store', 'data'),
+    State('global-params', 'data'),
+    prevent_initial_call=True,
+)
+def import_batch_event_to_backtest(n_clicks, event_id,
+                                    research_params, global_params):
+    """把批量研究里某个事件带入信号回测"""
+    if not n_clicks or not event_id:
+        return no_update, no_update
+
+    p = _gp_merge(global_params)
+
+    if research_params:
+        # 只带公共参数，event_id 用批量里选的那个
+        if research_params.get('price_type'):
+            p['price_type'] = research_params['price_type']
+
+        wt = research_params.get('window_type')
+        if wt:
+            p['window_type'] = wt
+            eng = _wt2e(wt, research_params.get('window_custom_hours'))
+            p.update(eng)
+
+        for k in ('initial_capital', 'position_mode', 'position_size',
+                  'backtest_range', 'backtest_range_custom'):
+            if research_params.get(k) is not None:
+                p[k] = research_params[k]
+
+    # 事件：用批量里选的那个
+    p['event_id'] = event_id
+    # 市场：清空，让 /backtest 页面按事件自动选目标市场
+    p['market_id'] = None
+
+    return p, '/backtest'

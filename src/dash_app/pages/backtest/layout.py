@@ -8,7 +8,7 @@ from dash import html, dcc
 from src.dash_app.pages.backtest.params_panel import create_params_panel
 
 
-def layout():
+def layout(global_params=None):
     return html.Div([
 
         html.Div([
@@ -65,7 +65,7 @@ def layout():
 
         html.Div([
             html.Div([
-                create_params_panel()
+                create_params_panel(global_params=global_params)
             ], className='backtest-left', style={
                 'width': '28%', 'display': 'inline-block',
                 'verticalAlign': 'top', 'paddingRight': '20px',

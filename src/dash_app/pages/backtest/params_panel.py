@@ -2,14 +2,7 @@
 """
 参数配置面板
 
-结构：
-- 第一步 · 数据选择（事件/市场）—— 手写，因为联动特殊
-- 第二步 · 观察维度 —— schema 生成
-- 第三步 · 信号参数 —— schema 生成
-- 第四步 · 评价假设 —— schema 生成
-
-生成器：pages/shared/params_panel.py
-组件 ID 沿用旧格式（backtest-xxx），现有回调无需改动。
+global_params 不为 None 时，用它初始化各组件默认值。
 """
 
 from dash import html, dcc
@@ -24,8 +17,8 @@ from src.dash_app.pages.shared.params_panel import (
 )
 
 
-def create_params_panel(default_event_id=None, series='7d'):
-    """创建完整的参数配置面板"""
+def create_params_panel(default_event_id=None, series='7d',
+                        global_params=None):
     events_df = get_elon_tweet_events(series)
     event_ids = events_df['id'].tolist()
     targets_map = get_target_markets_batch(event_ids)
@@ -44,13 +37,34 @@ def create_params_panel(default_event_id=None, series='7d'):
             label = row['slug']
         event_options.append({'label': label, 'value': row['id']})
 
-    default_event = (default_event_id
-                     or (events_df.iloc[-1]['id']
-                         if not events_df.empty else None))
+    # 默认事件优先级：global_params.event_id > default_event_id > 最后一个
+    default_event = None
+    if global_params and global_params.get('event_id') in event_ids:
+        default_event = global_params['event_id']
+    elif default_event_id:
+        default_event = default_event_id
+    elif not events_df.empty:
+        default_event = events_df.iloc[-1]['id']
+
+    # 构造 overrides
+    overrides = {}
+    if global_params:
+        for k, v in global_params.items():
+            if v is not None:
+                overrides[k] = v
+
+    # window_custom_hours 手写输入框的初始值
+    custom_hours = ''
+    if global_params and global_params.get('window_custom_hours') is not None:
+        custom_hours = global_params['window_custom_hours']
+
+    # backtest_range_custom 手写 RangeSlider 的初始值
+    range_custom = [0, 100]
+    if global_params and global_params.get('backtest_range_custom'):
+        range_custom = global_params['backtest_range_custom']
 
     return html.Div([
 
-        # ========== 标题 ==========
         html.Div([
             html.H4("📊 回测参数配置",
                     style={'margin': 0, 'color': '#2c3e50'}),
@@ -60,7 +74,7 @@ def create_params_panel(default_event_id=None, series='7d'):
         ], style={'borderBottom': '2px solid #3498db',
                   'paddingBottom': '10px', 'marginBottom': '15px'}),
 
-        # ========== 第一步：数据选择 ==========
+        # 第一步：数据选择
         html.Details([
             html.Summary("📊 数据选择",
                          style={'fontWeight': 'bold', 'fontSize': '14px',
@@ -82,7 +96,6 @@ def create_params_panel(default_event_id=None, series='7d'):
                                     'color': '#7f8c8d',
                                     'marginTop': '2px'}),
                 ], style={'marginBottom': '10px'}),
-
                 html.Div([
                     html.Label("目标市场:",
                                style={'fontWeight': 'bold',
@@ -101,18 +114,20 @@ def create_params_panel(default_event_id=None, series='7d'):
             ], style={'padding': '8px 0 4px 0'}),
         ], open=True, style={'marginBottom': '12px'}),
 
-        # ========== 第二步：观察维度 ==========
+        # 第二步：观察维度
         html.Details([
             html.Summary("🎚️ 观察维度",
                          style={'fontWeight': 'bold', 'fontSize': '14px',
                                 'cursor': 'pointer'}),
             create_schema_section(
                 'backtest', 'dimension',
+                overrides=overrides,
                 extra_children=[
                     html.Div([
                         dcc.Input(
                             id='backtest-window-custom',
                             type='text',
+                            value=custom_hours,
                             placeholder='自定义小时数',
                             style={'width': '60%',
                                    'display': 'inline-block',
@@ -128,33 +143,35 @@ def create_params_panel(default_event_id=None, series='7d'):
             ),
         ], style={'marginBottom': '12px'}),
 
-        # ========== 第三步：信号参数 ==========
+        # 第三步：信号参数
         html.Details([
             html.Summary("🧠 信号参数",
                          style={'fontWeight': 'bold', 'fontSize': '14px',
                                 'cursor': 'pointer'}),
-            create_schema_section('backtest', 'signal'),
+            create_schema_section('backtest', 'signal',
+                                  overrides=overrides),
         ], style={'marginBottom': '12px'}),
 
-        # ========== 第四步：评价假设 ==========
+        # 第四步：评价假设
         html.Details([
             html.Summary("💰 评价假设",
                          style={'fontWeight': 'bold', 'fontSize': '14px',
                                 'cursor': 'pointer'}),
             create_schema_section(
                 'backtest', 'execution',
+                overrides=overrides,
                 extra_children=[
                     html.Div([
                         dcc.RangeSlider(
                             id='backtest-range-custom',
-                            min=0, max=100, step=5, value=[0, 100],
+                            min=0, max=100, step=5,
+                            value=range_custom,
                             marks={0: '0%', 25: '25%', 50: '50%',
                                    75: '75%', 100: '100%'},
                             tooltip={'placement': 'bottom',
                                      'always_visible': False},
                         ),
-                        html.Div("按事件时长百分比选择回测时段"
-                                 "（0%=事件开始，100%=事件结束）",
+                        html.Div("按事件时长百分比选择回测时段",
                                  style={'fontSize': '11px',
                                         'color': '#7f8c8d',
                                         'marginTop': '2px'}),
@@ -164,7 +181,7 @@ def create_params_panel(default_event_id=None, series='7d'):
             ),
         ], style={'marginBottom': '20px'}),
 
-        # ========== 操作按钮 ==========
+        # 操作按钮
         html.Div([
             html.Button(
                 '🔄 刷新信号预览',
@@ -195,8 +212,6 @@ def create_params_panel(default_event_id=None, series='7d'):
                  "刷新绩效/交易/评估",
                  style={'fontSize': '11px', 'color': '#7f8c8d',
                         'textAlign': 'center'}),
-
-        # ========== 隐藏存储 ==========
 
     ], style={
         'backgroundColor': 'white',

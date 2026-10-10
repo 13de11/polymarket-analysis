@@ -4,7 +4,7 @@ import os
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, PROJECT_ROOT)
 
-from dash import Dash, html, dcc, callback, Input, Output
+from dash import Dash, html, dcc, callback, Input, Output, State
 
 app = Dash(__name__, suppress_callback_exceptions=True)
 server = app.server
@@ -18,6 +18,7 @@ from src.dash_app.pages.backtest import callbacks as _backtest_callbacks  # noqa
 
 app.layout = html.Div([
     dcc.Location(id='url'),
+    dcc.Store(id='global-params', data={}),
     html.Div([
 
         # ========== 左侧导航栏 ==========
@@ -98,20 +99,20 @@ def update_series_label(series):
 
 @callback(
     Output('page-content', 'children'),
-    Input('url', 'pathname')
+    Input('url', 'pathname'),
+    State('global-params', 'data'),
 )
-def display_page(pathname):
+def display_page(pathname, global_params):
     if pathname == '/analysis':
         return price_tweet_analysis.layout()
     elif pathname == '/insights':
         return insights_dashboard.layout()
     elif pathname == '/backtest':
-        return backtest_layout()
+        return backtest_layout(global_params)
     elif pathname == '/research':
         return research.layout()
     else:
         return home.layout()
-
 
 @callback(
     Output('nav-home', 'className'),
