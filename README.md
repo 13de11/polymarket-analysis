@@ -346,45 +346,77 @@ return tbl(['列1', '列2'], rows)
 
 ## 🗺️ 待办清单
 
-按模块 + 优先级组织。编号供后续对话直接引用（如"做 R1"）。
+编号体系：P0（明显错误/数据误导）、P1（体验/一致性/性能）、P2（可延后）、P3（远期）。
+引用方式："做 P0"、"做 HM-3"。
 
-### 🔴 高优先
+### P0 —— 明显错误 / 数据误导 / 功能缺失
 
-| 编号 | 方向 | 模块 | 备注 |
-|------|------|------|------|
-| M1~M3 | 扫描 `insights/` / `price_tweet_analysis.py` / `home.py` 的表格对齐 | 观察层 | 用 `utils/ui/table.py` 统一 |
-| M4 | 检查上述三页面是否有"多次重跑"架构问题 | 观察层 | 参考 backtest 的坑 |
-| R4 | 策略类型扩展：`buy_hold` / `reverse_signal` / 双均线 | 策略研究 | 需在 `runner.py` 按 `strategy_id` 分发 |
-| R5 | 窗口作为策略级覆盖项（A/B/C 用不同 `window_type`） | 策略研究 | 现在窗口是全局基础参数 |
-
-### 🟠 中优先
-
-| 编号 | 方向 | 模块 | 备注 |
-|------|------|------|------|
-| **C1** | **跨页带参功能（挂起）** | 全局 | 试过多种方案均失败，代码保留但按钮隐藏，实际点击不生效 |
-| E1 | 多事件聚合统计：跨事件看策略稳定性 | 策略研究 | 与批量研究相关 |
-| B3 | 参数面板统一到 schema（research 侧） | 策略研究 | backtest 已迁移，research 待做 |
-| T1 | 回调风格统一（research / insights 尚未统一） | 全局 | `@callback` vs `register_*(app)` |
-| T2 | Tab 改用 `dcc.Tabs` children 机制（research） | 全局 | 现在用 `style={'display'}` 切换 |
-
-### 🟡 低优先 / 技术债
-
-| 编号 | 方向 | 模块 | 备注 |
-|------|------|------|------|
-| T3 | `generator.py` 状态管理重构（`prev_distance` 双重更新） | 信号 | 策略定型后做 |
-| T4 | `baseline.random_signal` 风险暴露公平性（全押 vs 固定金额） | 回测 | 基线对比不严格公平 |
-| T7 | 研究面板懒加载（`create_research_panel` 不查库） | 策略研究 | 缓存后已不痛 |
-| T5b | 敏感性/网格分析多线程或向量化提速 | 基础设施 | 纯 Python 循环是当前瓶颈 |
-
-### 🔵 远期
-
-| 编号 | 方向 | 备注 |
+| 编号 | 问题 | 位置 |
 |------|------|------|
-| R6 | 实验服务器端存储（`LocalFileStorage` 接口已就绪） | 数据落在 `data/experiments/` |
-| R7 | 多用户登录 + 历史记录 | 最终目标，涉及 `flask_login` 或 session |
-| E2 | 参数寻优（敏感性反过来自动搜最优） | 现有扫描的延伸 |
-| E3 | 实时数据接入（事件进行中也能分析） | 架构变化大 |
-| E4 | 策略信号导出（给外部工具） | — |
+| HM-3 | 首页功能卡片缺"策略研究"入口 | `home.py` |
+| HM-2 | 首页"最后更新"用 `datetime.now()`，永远是今天 | `home.py` |
+| PT-4 | 顶部"前置过滤条件"文案与代码不符 | `price_tweet_analysis.py` |
+| PT-1 | "命中市场 ± 2（共 5 个）"写死 | `price_tweet_analysis.py` |
+| IN-9 | `explorer.py` 除零风险 | `insights/explorer.py` |
+| IN-8 | `explorer.py` 裸 `except:` | `insights/explorer.py` |
+
+### P1 —— 体验差 / 视觉不一致 / 性能
+
+| 编号 | 问题 | 位置 |
+|------|------|------|
+| PT-2 | X 轴 `tickformat='%H:%M'`，7d 事件跨天看不出 | `price_tweet_analysis.py` |
+| PT-5 | 图例在底部，与其他页面不一致 | `price_tweet_analysis.py` |
+| IN-5 | insights 卡片样式与其他页面不统一 | `insights/callbacks.py` |
+| HM-1 | 首页 KPI 硬编码 7d，不响应 series | `home.py` |
+| R4 | 策略类型扩展：`buy_hold` / `reverse_signal` / 双均线 | `runner.py`（需 `strategy_id` 分发） |
+| IN-3 | 说明块手写 9 遍，抽组件可省 100+ 行 | `insights/layout.py` |
+| IN-7 | `update_tweet_explorer` 单回调 150+ 行 | `insights/explorer.py` |
+| T1 | 回调风格统一（research / insights 仍是 `register_*(app)`） | 全局 |
+| T2 | Tab 用 `dcc.Tabs` children 机制（research / insights） | 全局 |
+| B3 | 参数面板统一到 schema（research 侧） | `research/filter_panel.py` |
+
+### P2 —— 可延后
+
+| 编号 | 问题 | 位置 |
+|------|------|------|
+| PT-6 | 加"导出当前数据"按钮 | `price_tweet_analysis.py` |
+| PT-3 | `update_chart` 重复调用 `get_markets_by_event` | `price_tweet_analysis.py` |
+| PT-7 | "±2" 硬编码，改为控件 | `price_tweet_analysis.py` |
+| IN-1 | `insights-store` 死代码 | `insights/layout.py` |
+| IN-4 | "最多 30 个事件"硬编码 | `insights/callbacks.py` |
+| IN-6 | insights 回调没 `prevent_initial_call` | `insights/callbacks.py` |
+| IN-10 | 冗余 `if not df.empty` 检查 | `insights/explorer.py` |
+| IN-11 | `go.Table` 高度硬算 | `insights/explorer.py` |
+| IN-12 | explorer 3 个回调分散 | `insights/explorer.py` |
+| HM-4 | 首页 KPI 在 layout 阶段查库 | `home.py` |
+| T3 | `generator.py` 状态管理重构 | 信号层 |
+| T4 | `baseline.random_signal` 风险暴露公平性 | 回测 |
+| T7 | 研究面板懒加载 | `research/filter_panel.py` |
+| T5b | 敏感性/网格分析多线程或向量化 | 基础设施 |
+| E1 | 多事件聚合统计 | 策略研究 |
+
+### P3 —— 远期
+
+| 编号 | 方向 |
+|------|------|
+| C1 | 跨页带参功能（**挂起**，代码保留按钮隐藏） |
+| R6 | 实验服务器端存储（`LocalFileStorage` 已就绪） |
+| R7 | 多用户登录 + 历史记录 |
+| E2 | 参数寻优 |
+| E3 | 实时数据接入 |
+| E4 | 策略信号导出 |
+
+### 已完成（供追溯）
+
+R1（多事件批量研究）、R2（绩效散点图）、R3（交易分布直方图）、R5（窗口作为策略级覆盖项）、R6（多市场敏感性）、B1/B2（交易明细排序筛选）、B4（custom range 验证）、B5（loading）、B6（跨页参数互通按钮）、T5（prepare 缓存）、T6（research loading）、T8（输入类型安全）
+
+### 建议节奏
+
+1. **第 1 批**：P0 六项（独立小改，一次做完）
+2. **第 2 批**：P1 前 4 项（视觉一致性，一起做）
+3. **第 3 批**：P1 后 6 项（结构性改动，分多轮）
+4. **第 4 批**：P2 清单（随手修）
+5. **P3 暂不启动**
 
 ---
 
