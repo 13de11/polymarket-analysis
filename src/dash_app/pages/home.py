@@ -1,9 +1,15 @@
 """
 首页 - 项目概览
 """
-from dash import html, dcc
+import os
 from datetime import datetime
+from dash import html, dcc
 from src.dash_app.utils.stats_loader import get_overview_stats
+
+try:
+    from config import LIGHT_DB_PATH
+except ImportError:
+    LIGHT_DB_PATH = None
 
 
 def _feature_card(title, desc, href):
@@ -11,7 +17,8 @@ def _feature_card(title, desc, href):
     return dcc.Link([
         html.Div([
             html.H4(title, style={'margin': '0 0 8px 0'}),
-            html.P(desc, style={'fontSize': '13px', 'color': '#6c757d', 'margin': 0})
+            html.P(desc, style={'fontSize': '13px', 'color': '#6c757d',
+                                'margin': 0})
         ], style={
             'padding': '15px',
             'backgroundColor': '#f8f9fa',
@@ -28,6 +35,7 @@ def _feature_card(title, desc, href):
         'cursor': 'pointer'
     })
 
+
 def _build_kpi_cards():
     """构建首页 KPI 卡片（静态，7d 系列）"""
     try:
@@ -38,8 +46,11 @@ def _build_kpi_cards():
 
     def card(icon, label, value):
         return html.Div([
-            html.Div(f"{icon} {label}", style={'fontSize': '12px', 'color': '#6c757d'}),
-            html.Div(str(value), style={'fontSize': '24px', 'fontWeight': 'bold', 'marginTop': '4px'})
+            html.Div(f"{icon} {label}",
+                     style={'fontSize': '12px', 'color': '#6c757d'}),
+            html.Div(str(value), style={'fontSize': '24px',
+                                        'fontWeight': 'bold',
+                                        'marginTop': '4px'})
         ], style={
             'textAlign': 'center',
             'padding': '15px',
@@ -61,6 +72,18 @@ def _build_kpi_cards():
         'gap': '15px'
     })
 
+
+def _get_db_last_modified():
+    """从数据库文件的修改时间获取真实的'最后更新'时间"""
+    if not LIGHT_DB_PATH or not os.path.exists(str(LIGHT_DB_PATH)):
+        return '未知'
+    try:
+        mtime = os.path.getmtime(str(LIGHT_DB_PATH))
+        return datetime.fromtimestamp(mtime).strftime('%Y-%m-%d %H:%M')
+    except Exception:
+        return '未知'
+
+
 def layout():
     return html.Div([
         html.H2("🏠 欢迎使用 Polymarket 数据分析平台"),
@@ -68,38 +91,55 @@ def layout():
 
         # ---- KPI 数据概览 ----
         html.Div([
-            html.H4("📊 平台数据概览（7天事件）", style={'marginBottom': '15px'}),
+            html.H4("📊 平台数据概览（7天事件）",
+                    style={'marginBottom': '15px'}),
             html.Div(id='home-kpi-cards', children=_build_kpi_cards()),
         ]),
 
         # ---- 功能入口卡片 ----
         html.Div([
-            html.P("本平台提供以下功能模块：", style={'fontSize': '16px', 'marginBottom': '15px'}),
+            html.P("本平台提供以下功能模块：",
+                   style={'fontSize': '16px', 'marginBottom': '15px'}),
             html.Div([
                 _feature_card(
                     "📈 价格-推文分析",
-                    "查看单个事件内各市场随推文的价格变化趋势，识别命中市场与推文密度的关系。",
+                    "查看单个事件内各市场随推文的价格变化趋势，"
+                    "识别命中市场与推文密度的关系。",
                     '/analysis'
                 ),
                 _feature_card(
                     "📊 数据分析中心",
-                    "历史事件的命中模式、推文热度图谱、区间存活时长等聚合分析。",
+                    "历史事件的命中模式、推文热度图谱、"
+                    "区间存活时长等聚合分析。",
                     '/insights'
                 ),
                 _feature_card(
                     "📈 预测回测",
-                    "基于推文热度的方向预测策略，支持参数调优、策略对比和敏感性分析。",
+                    "单事件信号评价：信号预览、绩效概览、"
+                    "交易明细、策略评估。",
                     '/backtest'
                 ),
-            ], style={'display': 'flex', 'flexWrap': 'wrap', 'gap': '15px'}),
-        ], style={'padding': '20px', 'backgroundColor': 'white', 'borderRadius': '8px', 'border': '1px solid #e9ecef'}),
+                _feature_card(
+                    "🔬 策略研究",
+                    "多策略对比、参数敏感性扫描、"
+                    "多事件/多子市场批量研究、实验保存。",
+                    '/research'
+                ),
+            ], style={'display': 'flex', 'flexWrap': 'wrap',
+                      'gap': '15px'}),
+        ], style={'padding': '20px', 'backgroundColor': 'white',
+                  'borderRadius': '8px',
+                  'border': '1px solid #e9ecef'}),
 
         html.Hr(),
 
         # ---- 状态信息 ----
         html.Div([
-            html.P("📊 数据库状态: 已连接", style={'color': '#28a745', 'margin': '4px 0'}),
-            html.P("📂 数据来源: Polymarket + Twitter", style={'color': '#6c757d', 'margin': '4px 0'}),
-            html.P(f"🕐 最后更新: {datetime.now().strftime('%Y-%m-%d')}", style={'color': '#6c757d', 'margin': '4px 0'}),
+            html.P("📊 数据库状态: 已连接",
+                   style={'color': '#28a745', 'margin': '4px 0'}),
+            html.P("📂 数据来源: Polymarket + Twitter",
+                   style={'color': '#6c757d', 'margin': '4px 0'}),
+            html.P(f"🕐 数据库最后更新: {_get_db_last_modified()}",
+                   style={'color': '#6c757d', 'margin': '4px 0'}),
         ], style={'fontSize': '14px'})
     ])

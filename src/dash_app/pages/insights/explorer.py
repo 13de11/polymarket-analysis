@@ -223,7 +223,7 @@ def update_tweet_explorer(mode, event_id, start_date, end_date, pathname):
         try:
             dt = pd.to_datetime(date_str) + pd.Timedelta(hours=int(hour_str))
             return stat_start_dt <= dt <= stat_end_dt
-        except:
+        except (ValueError, TypeError):
             return True
 
     total_tweets = 0
@@ -348,7 +348,9 @@ def update_tweet_explorer(mode, event_id, start_date, end_date, pathname):
     for j, date_label in enumerate(date_labels):
         val = int(col_total.iloc[j])
         total_row.append({'value': val, 'color': '#e8e8e8'})
-    total_row.append({'value': round(total_tweets / len(hour_indices), 1), 'color': '#e8e8e8'})
+    avg_all = (round(total_tweets / len(hour_indices), 1)
+               if hour_indices else 0)
+    total_row.append({'value': avg_all, 'color': '#e8e8e8'})
     cell_vals.append(total_row)
 
     values_list = []

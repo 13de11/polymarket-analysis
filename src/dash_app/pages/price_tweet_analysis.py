@@ -30,14 +30,12 @@ def layout():
         html.Div([
             html.Div([
                 html.Span("📌 ", style={'fontSize': '18px'}),
-                html.Strong("前置过滤条件"),
+                html.Strong("数据范围"),
                 html.Span(" | 仅显示 ", style={'margin': '0 5px'}),
-                html.Code("series_slug='elon-tweets'"),
-                html.Span(" 且 ", style={'margin': '0 5px'}),
-                html.Code("start_date >= '2026-05-30'"),
+                html.Code("slug LIKE 'elon-musk-of-tweets%'"),
                 html.Span(" 且 ", style={'margin': '0 5px'}),
                 html.Code("end_date < 当前时间"),
-                html.Span(" 的事件", style={'margin': '0 5px'}),
+                html.Span(" 的已结束事件", style={'margin': '0 5px'}),
             ], style={'display': 'inline-block', 'marginRight': 30}),
             html.Div([
                 html.Span("🎯 ", style={'fontSize': '18px'}),
@@ -87,8 +85,9 @@ def layout():
             html.Div([
                 html.Label("默认显示:", style={'fontWeight': 'bold', 'fontSize': '14px'}),
                 html.Div([
-                    html.Span("🎯 命中市场 ± 2", style={'color': '#28a745', 'fontWeight': 'bold'}),
-                    html.Span("  (共5个市场)", style={'color': '#6c757d', 'fontSize': '12px'})
+                    html.Span("🎯 命中市场及邻近市场",
+                              style={'color': '#28a745',
+                                     'fontWeight': 'bold'})
                 ], style={'marginTop': 6})
             ], style={'width': '20%', 'display': 'inline-block', 'verticalAlign': 'top'}),
         ], style={
