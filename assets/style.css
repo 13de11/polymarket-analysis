@@ -80,3 +80,129 @@
     background-color: #0b5ed7;
     color: white;
 }
+
+/* ========== 设计系统：CSS 变量 ========== */
+:root {
+    /* 颜色：主色 */
+    --color-primary: #6c5ce7;
+    --color-primary-blue: #3498db;
+    --color-primary-green: #00b894;
+
+    /* 颜色：语义 */
+    --color-success: #28a745;
+    --color-danger: #e74c3c;
+    --color-warning: #f39c12;
+    --color-info: #3498db;
+
+    /* 颜色：文本 */
+    --color-text: #2c3e50;
+    --color-text-body: #495057;
+    --color-text-muted: #6c757d;
+    --color-text-light: #adb5bd;
+
+    /* 颜色：背景 / 边框 */
+    --color-bg-light: #f8f9fa;
+    --color-bg-muted: #f1f3f5;
+    --color-bg-warn: #fff3cd;
+    --color-bg-error: #fdecea;
+    --color-bg-success: #e8f8f5;
+    --color-border: #e9ecef;
+    --color-border-strong: #dee2e6;
+
+    /* 字号 */
+    --fs-xs: 11px;
+    --fs-sm: 12px;
+    --fs-md: 13px;
+    --fs-base: 14px;
+    --fs-lg: 16px;
+    --fs-xl: 20px;
+    --fs-xxl: 24px;
+
+    /* 间距 */
+    --pad-xs: 4px 8px;
+    --pad-sm: 8px 12px;
+    --pad-md: 10px 15px;
+    --pad-lg: 15px;
+    --gap-sm: 10px;
+    --gap-md: 15px;
+    --gap-lg: 20px;
+
+    /* 圆角 / 阴影 */
+    --radius-sm: 4px;
+    --radius: 6px;
+    --radius-lg: 8px;
+    --shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+/* ========== 设计系统：通用类 ========== */
+
+/* --- 文本 --- */
+.text-title   { color: var(--color-text); font-weight: bold; }
+.text-body    { color: var(--color-text-body); }
+.text-muted   { color: var(--color-text-muted); font-size: var(--fs-sm); }
+.text-light   { color: var(--color-text-light); font-size: var(--fs-xs); }
+.text-success { color: var(--color-success); font-weight: bold; }
+.text-danger  { color: var(--color-danger); font-weight: bold; }
+.text-center  { text-align: center; }
+.text-left    { text-align: left; }
+
+/* --- 背景 --- */
+.bg-light   { background: var(--color-bg-light); }
+.bg-muted   { background: var(--color-bg-muted); }
+.bg-warn    { background: var(--color-bg-warn); }
+.bg-error   { background: var(--color-bg-error); }
+.bg-success { background: var(--color-bg-success); }
+
+/* --- 容器 --- */
+.card {
+    background: white;
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: var(--pad-lg);
+}
+.panel {
+    padding: var(--pad-lg);
+    background: var(--color-bg-light);
+    border-radius: var(--radius-lg);
+}
+.info-block {
+    padding: var(--pad-sm);
+    background: var(--color-bg-muted);
+    border-radius: var(--radius-sm);
+    margin-top: 8px;
+    font-size: var(--fs-sm);
+    color: var(--color-text-body);
+    line-height: 1.5;
+}
+.hint {
+    font-size: var(--fs-sm);
+    color: var(--color-text-muted);
+}
+
+/* --- KPI 卡片 --- */
+.kpi-card {
+    text-align: center;
+    padding: var(--pad-lg);
+    background: white;
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    min-width: 140px;
+    flex: 1;
+    box-sizing: border-box;
+}
+.kpi-value {
+    font-size: var(--fs-xxl);
+    font-weight: bold;
+    margin-top: 4px;
+}
+.kpi-label {
+    font-size: var(--fs-sm);
+    color: var(--color-text-muted);
+}
+
+/* --- 布局 --- */
+.flex-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--gap-md);
+}
