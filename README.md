@@ -352,7 +352,7 @@ HM-3（首页缺策略研究入口）、HM-2（最后更新假数据）、PT-4�
 | IN-5 insights 卡片样式统一 | ✅ 完成 |
 | HM-1 首页 KPI 响应 series | ✅ 完成 |
 | IN-3 说明块抽组件 | ✅ 完成（`info_block` + CSS 类） |
-| **IN-7** `update_tweet_explorer` 拆分 | 🔄 进行中 |
+| IN-7 `update_tweet_explorer` 拆分 | ✅ 完成（拆出 `_resolve_range` + `_compute_stats` 纯函数；顺带删死代码、`get_event_time_range` 查询 2→1） |
 | **R4** 策略类型扩展 | 🔲 待做 |
 | **T1** 回调风格统一 | 🔲 待做 |
 | **T2** Tab 用 `dcc.Tabs` children 机制 | 🔲 待做 |
@@ -377,6 +377,7 @@ HM-3（首页缺策略研究入口）、HM-2（最后更新假数据）、PT-4�
 | T7 | 研究面板懒加载 |
 | T5b | 敏感性/网格分析提速 |
 | E1 | 多事件聚合统计 |
+| IN-13 | explorer「平均」口径不一致：卡片「平均/小时」为全量均值，「总推文」与 Total 行 Avg 为统计期过滤口径，待统一 |
 
 ### P3 —— 远期
 
