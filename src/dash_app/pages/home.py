@@ -3,7 +3,7 @@
 """
 import os
 from datetime import datetime
-from dash import html, dcc
+from dash import html, dcc, Input, Output, callback
 from src.dash_app.utils.stats_loader import get_overview_stats
 
 try:
@@ -36,10 +36,10 @@ def _feature_card(title, desc, href):
     })
 
 
-def _build_kpi_cards():
-    """构建首页 KPI 卡片（静态，7d 系列）"""
+def _build_kpi_cards(series='7d'):
+    """构建首页 KPI 卡片（响应 series）"""
     try:
-        stats = get_overview_stats('7d')
+        stats = get_overview_stats(series)
     except Exception as e:
         print(f"首页 KPI 加载失败: {e}")
         return html.Div("暂无数据", style={'color': '#6c757d'})
@@ -91,9 +91,8 @@ def layout():
 
         # ---- KPI 数据概览 ----
         html.Div([
-            html.H4("📊 平台数据概览（7天事件）",
-                    style={'marginBottom': '15px'}),
-            html.Div(id='home-kpi-cards', children=_build_kpi_cards()),
+            html.H4(id='home-kpi-title', style={'marginBottom': '15px'}),
+            html.Div(id='home-kpi-cards'),
         ]),
 
         # ---- 功能入口卡片 ----
@@ -143,3 +142,20 @@ def layout():
                    style={'color': '#6c757d', 'margin': '4px 0'}),
         ], style={'fontSize': '14px'})
     ])
+
+from dash import Input, Output, callback
+
+
+@callback(
+    Output('home-kpi-cards', 'children'),
+    Output('home-kpi-title', 'children'),
+    Input('series-selector', 'value'),
+    Input('url', 'pathname'),
+)
+def _update_home_kpi(series, pathname):
+    from dash import no_update
+    if pathname not in ('/', None):
+        return no_update, no_update
+    series = series or '7d'
+    title = f"📊 平台数据概览（{'7天' if series == '7d' else '48小时'}事件）"
+    return _build_kpi_cards(series), title

@@ -6,6 +6,7 @@ import plotly.graph_objects as go
 import plotly.express as px
 from plotly.subplots import make_subplots
 import pandas as pd
+from datetime import datetime
 
 from src.dash_app.utils.data_loader import (
     get_elon_tweet_events,
@@ -373,6 +374,14 @@ def update_chart(event_id, selected_market_ids, price_type, target_info, pathnam
             secondary_y=True
         )
 
+    # 按事件时长自适应 X 轴格式
+    # X 轴统一用日期（不带小时）：48h 事件的市场生命周期其实跨多天
+    duration_hours = (max_ts - min_ts) / 3600 if max_ts and min_ts else 0
+    if duration_hours <= 24 * 10:
+        dtick_ms = 24 * 3600 * 1000     # 1 天
+    else:
+        dtick_ms = 2 * 24 * 3600 * 1000  # 2 天
+
     fig.update_layout(
         autosize=True,
         title=dict(
@@ -381,9 +390,9 @@ def update_chart(event_id, selected_market_ids, price_type, target_info, pathnam
         ),
         xaxis=dict(
             title=None,
-            tickformat='%H:%M',
+            tickformat='%m-%d',
             tickangle=-45,
-            dtick=21600000,
+            dtick=dtick_ms,
             ticklabelstep=1,
             showgrid=True,
             gridcolor='rgba(200, 200, 200, 0.4)',
@@ -404,15 +413,15 @@ def update_chart(event_id, selected_market_ids, price_type, target_info, pathnam
         ),
         legend=dict(
             orientation='h',
-            yanchor='top',
-            y=-0.25,
+            yanchor='bottom',
+            y=1.02,
             xanchor='center',
             x=0.5,
             font=dict(size=11)
         ),
         hovermode='x unified',
         dragmode='zoom',
-        margin=dict(l=60, r=80, t=50, b=120),
+        margin=dict(l=60, r=80, t=80, b=80),
         hoverlabel=dict(
             bgcolor='rgba(255,255,255,0.8)',
             font_size=12,

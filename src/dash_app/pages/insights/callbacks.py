@@ -37,50 +37,52 @@ def update_insights_overview(series, pathname):
 
     stats = get_overview_stats(series)
 
+    def _kpi_card(icon_label, value):
+        return html.Div([
+            html.Div(icon_label, style={'fontSize': '12px',
+                                        'color': '#6c757d'}),
+            html.Div(str(value), style={'fontSize': '24px',
+                                        'fontWeight': 'bold',
+                                        'marginTop': '4px'})
+        ], style={
+            'textAlign': 'center', 'padding': '15px',
+            'backgroundColor': 'white',
+            'borderRadius': '6px',
+            'boxShadow': '0 1px 3px rgba(0,0,0,0.1)',
+            'minWidth': '140px', 'flex': '1'
+        })
+
     kpi_cards = html.Div([
-        html.Div([
-            html.Div("📅 总事件", style={'fontSize': '12px', 'color': '#6c757d'}),
-            html.Div(str(stats['total_events']), style={'fontSize': '24px', 'fontWeight': 'bold'})
-        ], style={'textAlign': 'center', 'padding': '10px', 'backgroundColor': 'white', 'borderRadius': '6px',
-                  'boxShadow': '0 1px 3px rgba(0,0,0,0.1)', 'minWidth': '100px'}),
-        html.Div([
-            html.Div("🐦 总推文", style={'fontSize': '12px', 'color': '#6c757d'}),
-            html.Div(f"{stats['total_tweets']:,}", style={'fontSize': '24px', 'fontWeight': 'bold'})
-        ], style={'textAlign': 'center', 'padding': '10px', 'backgroundColor': 'white', 'borderRadius': '6px',
-                  'boxShadow': '0 1px 3px rgba(0,0,0,0.1)', 'minWidth': '100px'}),
-        html.Div([
-            html.Div("🎯 命中市场", style={'fontSize': '12px', 'color': '#6c757d'}),
-            html.Div(str(stats['hit_count']), style={'fontSize': '24px', 'fontWeight': 'bold'})
-        ], style={'textAlign': 'center', 'padding': '10px', 'backgroundColor': 'white', 'borderRadius': '6px',
-                  'boxShadow': '0 1px 3px rgba(0,0,0,0.1)', 'minWidth': '100px'}),
-        html.Div([
-            html.Div("🔥 最热区间", style={'fontSize': '12px', 'color': '#6c757d'}),
-            html.Div(stats['hot_range'], style={'fontSize': '24px', 'fontWeight': 'bold'})
-        ], style={'textAlign': 'center', 'padding': '10px', 'backgroundColor': 'white', 'borderRadius': '6px',
-                  'boxShadow': '0 1px 3px rgba(0,0,0,0.1)', 'minWidth': '100px'}),
+        _kpi_card("📅 总事件", stats['total_events']),
+        _kpi_card("🐦 总推文", f"{stats['total_tweets']:,}"),
+        _kpi_card("🎯 命中市场", stats['hit_count']),
+        _kpi_card("🔥 最热区间", stats['hot_range']),
     ], style={
-        'display': 'flex', 'flexWrap': 'wrap', 'gap': '15px', 'justifyContent': 'space-around'
+        'display': 'flex', 'flexWrap': 'wrap', 'gap': '15px'
     })
 
     ma = get_ma_values()
 
+    def _ma_card(label, value, color):
+        return html.Div([
+            html.Div(label, style={'fontSize': '12px', 'color': '#6c757d'}),
+            html.Div(f"{value:.1f}", style={'fontSize': '24px',
+                                            'fontWeight': 'bold',
+                                            'color': color,
+                                            'marginTop': '4px'})
+        ], style={
+            'textAlign': 'center', 'padding': '15px',
+            'backgroundColor': 'white',
+            'borderRadius': '6px',
+            'boxShadow': '0 1px 3px rgba(0,0,0,0.1)',
+            'minWidth': '140px', 'flex': '1'
+        })
+
     ma_cards = html.Div([
-        html.Div([
-            html.Div("24小时平均", style={'fontSize': '12px', 'color': '#6c757d'}),
-            html.Div(f"{ma['ma_24h']:.1f}", style={'fontSize': '20px', 'fontWeight': 'bold', 'color': '#3498db'})
-        ], style={'textAlign': 'center', 'padding': '8px 12px', 'backgroundColor': 'white', 'borderRadius': '6px',
-                  'boxShadow': '0 1px 3px rgba(0,0,0,0.1)', 'minWidth': '80px'}),
-        html.Div([
-            html.Div("7天平均", style={'fontSize': '12px', 'color': '#6c757d'}),
-            html.Div(f"{ma['ma_7d']:.1f}", style={'fontSize': '20px', 'fontWeight': 'bold', 'color': '#2ecc71'})
-        ], style={'textAlign': 'center', 'padding': '8px 12px', 'backgroundColor': 'white', 'borderRadius': '6px',
-                  'boxShadow': '0 1px 3px rgba(0,0,0,0.1)', 'minWidth': '80px'}),
-        html.Div([
-            html.Div("14天平均", style={'fontSize': '12px', 'color': '#6c757d'}),
-            html.Div(f"{ma['ma_14d']:.1f}", style={'fontSize': '20px', 'fontWeight': 'bold', 'color': '#e67e22'})
-        ], style={'textAlign': 'center', 'padding': '8px 12px', 'backgroundColor': 'white', 'borderRadius': '6px',
-                  'boxShadow': '0 1px 3px rgba(0,0,0,0.1)', 'minWidth': '80px'}),
-    ], style={'display': 'flex', 'flexWrap': 'wrap', 'gap': '15px', 'justifyContent': 'space-around'})
+        _ma_card("24小时平均", ma['ma_24h'], '#3498db'),
+        _ma_card("7天平均", ma['ma_7d'], '#2ecc71'),
+        _ma_card("14天平均", ma['ma_14d'], '#e67e22'),
+    ], style={'display': 'flex', 'flexWrap': 'wrap', 'gap': '15px'})
 
     hit_df = get_hit_distribution(series)
 
