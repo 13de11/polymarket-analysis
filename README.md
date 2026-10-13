@@ -35,17 +35,20 @@ Polymarket_Analysis/
 │
 ├── src/dash_app/                 # Dash 应用
 │   ├── state/                    # 全局状态（处理层共享）
+│   │   ├── __init__.py
 │   │   └── global_params.py      # 处理层共享参数结构 + helper
 │   │
 │   ├── pages/
 │   │   ├── home.py
 │   │   ├── price_tweet_analysis.py
+│   │   │
 │   │   ├── insights/             # 数据分析中心
 │   │   │   ├── layout.py
 │   │   │   ├── callbacks.py
 │   │   │   └── explorer.py
 │   │   │
 │   │   ├── shared/               # 跨页面共享组件
+│   │   │   ├── __init__.py
 │   │   │   └── params_panel.py   # 参数面板生成器（schema 驱动）
 │   │   │
 │   │   ├── backtest/             # 预测回测
@@ -64,15 +67,16 @@ Polymarket_Analysis/
 │   │       ├── filter_panel.py
 │   │       ├── experiment_manager.py   # 实验保存/加载栏
 │   │       └── tabs/
-│   │           ├── comparison.py       # 策略对比
-│   │           ├── sensitivity.py      # 单/双参数敏感性
-│   │           └── batch.py            # 跨事件批量研究
+│   │           ├── comparison.py       # 策略对比（含窗口级覆盖）
+│   │           ├── sensitivity.py      # 单/双参数 + 多市场敏感性
+│   │           └── batch.py            # 多事件/多子市场批量研究
 │   │
 │   └── utils/
 │       ├── data_loader.py        # 数据读取（lru_cache）
 │       ├── stats_loader.py       # 统计聚合
 │       ├── parsing.py            # 输入安全转换（safe_int / safe_float）
 │       ├── ui/
+│       │   ├── __init__.py
 │       │   └── table.py          # 表格样式工具（td / th / table）
 │       ├── research/             # 研究模块基础设施
 │       │   ├── params_schema.py      # 参数/指标元数据（单一数据源）
@@ -80,7 +84,7 @@ Polymarket_Analysis/
 │       │   ├── experiment.py         # ExperimentConfig 数据结构
 │       │   ├── storage.py            # ExperimentStorage 抽象
 │       │   ├── serialize.py          # numpy/datetime JSON 序列化
-│       │   └── batch.py              # BatchEngine 多事件批量研究引擎
+│       │   └── batch.py              # BatchEngine 多市场批量研究引擎
 │       ├── signal/generator.py   # 方向信号生成
 │       ├── backtest/
 │       │   ├── engine.py         # 交易执行
@@ -92,7 +96,7 @@ Polymarket_Analysis/
 │       │   ├── accuracy.py       # 多窗口方向准确率
 │       │   └── hold_period.py    # 持仓周期分析（分桶自适应）
 │       ├── comparison/engine.py  # 多策略对比引擎
-│       └── analysis/sensitivity.py  # 单/双参数敏感性
+│       └── analysis/sensitivity.py  # 单/双参数 + 多市场敏感性
 │
 └── archives/                     # 旧项目备份（不入 git）
 ```
@@ -105,9 +109,9 @@ Polymarket_Analysis/
 |------|------|------|
 | `/` | 首页 | 功能卡片 + 数据概览 |
 | `/analysis` | 价格-推文分析 | 事件内各市场价格与推文关系 |
-| `/insights` | 数据分析中心 | 命中模式、推文热度图谱（4 Tab） |
-| `/backtest` | 预测回测 | 单事件回测与评估（4 Tab） |
-| `/research` | 策略研究 | 策略对比、单/双参数敏感性、跨事件批量（3 Tab） |
+| `/insights` | 数据分析中心 | 命中模式、推文热度图谱、推文探索器（4 Tab） |
+| `/backtest` | 预测回测 | 单事件信号评价（4 Tab） |
+| `/research` | 策略研究 | 策略对比、敏感性、批量研究（3 Tab） |
 
 ---
 
@@ -256,17 +260,23 @@ run_backtest(params)                回测内核（与 /backtest 共用）
 
 ### 核心能力
 
-1. **策略对比**：3 张策略卡片，每张可覆盖任意参数（动态从 `STRATEGY_REGISTRY` 读）
+1. **策略对比**（📊 Tab 1）
+   - 3 张策略卡片，每张可覆盖任意参数（动态从 `STRATEGY_REGISTRY` 读）
+   - **窗口类型可覆盖**：每张卡片可选 7天/gamestart/开盘至今
    - 资金曲线对比 + 绩效散点图（收益-夏普平面）+ 指标对比表
    - 导出指标表 / 交易明细 CSV
-2. **单参数敏感性**：扫描范围从 `PARAM_SCHEMA` 自动生成，支持指标方向（max / min）
-3. **双参数网格**：热力图，色阶按指标方向自动反转
-4. **跨事件批量研究**：
-   - 事件多选（默认全选）
-   - 聚合统计表（收益均值 / 中位数 / 标准差 / 正事件率）
-   - 事件 × 策略 收益矩阵热力图
-   - 逐事件明细 DataTable（排序 / 分页 / 导出）
-5. **实验保存/加载**：`ExperimentConfig` 序列化为 JSON，可下载/上传
+2. **敏感性分析**（📊 Tab 2）
+   - 3 种模式：单参单市场 / 双参单市场网格 / **单参多市场集合**
+   - 多市场模式下：Y 轴 = 平均指标；辅助线 = 正收益市场占比
+   - 扫描范围从 `PARAM_SCHEMA` 自动生成，支持指标方向（max / min）
+3. **批量研究**（📦 Tab 3）
+   - **两种模式**：
+     - **多事件 × 目标市场**：每事件一个目标市场（现状）
+     - **单事件 × 多子市场**：同一事件下的多个市场
+   - 聚合统计表（均值/中位数/标准差/正条率）
+   - 标签 × 策略 收益矩阵热力图
+   - 逐条明细 DataTable（排序 / 分页 / 导出）
+4. **实验保存/加载**：`ExperimentConfig` 序列化为 JSON
 
 ### 关键文件
 
@@ -274,7 +284,7 @@ run_backtest(params)                回测内核（与 /backtest 共用）
 - `utils/research/strategy_config.py`：策略类型注册 + `StrategyConfig`
 - `utils/research/experiment.py`：`ExperimentConfig`（带 version，预留迁移）
 - `utils/research/storage.py`：`ExperimentStorage` 抽象（为将来多用户准备）
-- `utils/research/batch.py`：`BatchEngine` 多事件批量研究引擎
+- `utils/research/batch.py`：`BatchEngine` 多市场批量研究引擎
 
 ### 扩展方式
 
@@ -432,6 +442,6 @@ R1（多事件批量研究）、R2（绩效散点图）、R3（交易分布直�
 
 ## 📌 版本状态
 
-- **稳定可用**：观察层（`/analysis`、`/insights`）、回测模块、策略研究三 Tab、实验保存/加载
-- **已知失效**：跨页带参（comparison / sensitivity / batch → backtest），按钮保留但无效
-- **近期重构重点**：`backtest` 已迁移到 schema 驱动面板 + 全局 store；research 侧待迁移
+- **稳定可用**：观察层（`/analysis`、`/insights`）、回测模块、策略研究三 Tab（含多子市场、多市场敏感性、窗口级覆盖）、实验保存/加载
+- **已知失效**：跨页带参（comparison / sensitivity / batch → backtest），按钮保留但无效（C1）
+- **重构已完成**：`backtest` 已迁移到 schema 驱动面板 + 全局 store
