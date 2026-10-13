@@ -94,7 +94,8 @@ class BatchEngine:
                     'elapsed_sec': r.get('elapsed_sec', 0),
                 }
 
-            per_event[event_id] = {
+            key = f"{event_id}:{market_id}"
+            per_event[key] = {
                 'event_id': event_id,
                 'market_id': market_id,
                 'strategies': strategies_result,
