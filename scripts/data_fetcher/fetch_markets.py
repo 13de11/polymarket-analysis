@@ -155,7 +155,10 @@ def get_events_by_filters(
         if active_only:
             conditions.append("active = 1")
         if closed_only:
-            conditions.append("closed = 1")
+            conditions.append(
+                "(closed = 1 OR (end_date IS NOT NULL "
+                "AND end_date < datetime('now')))"
+            )
         if market_start_days_ago is not None and market_start_days_ago > 0:
             cutoff = (datetime.now() - timedelta(days=market_start_days_ago)).isoformat()
             conditions.append("start_date >= ?")

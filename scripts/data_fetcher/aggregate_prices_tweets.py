@@ -69,7 +69,10 @@ def get_events(conn, event_slug=None, event_ids=None):
         SELECT id, slug
         FROM events
         WHERE series_slug IN ('elon-tweets', 'elon-tweets-48h')
-          AND closed = 1
+          AND (
+    closed = 1
+    OR (end_date IS NOT NULL AND end_date < datetime('now'))
+)
           AND start_date >= '2025-11-29'
     """
     params = []
