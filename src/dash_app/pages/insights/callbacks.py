@@ -6,7 +6,6 @@
 """
 
 from dash import html, dcc, Input, Output, callback, no_update
-import plotly.express as px
 import plotly.graph_objects as go
 import pandas as pd
 
@@ -151,11 +150,23 @@ def update_insights_tweets(time_range, pathname):
     hourly_df = get_hourly_distribution()
 
     if not hourly_df.empty:
-        hour_fig = px.bar(hourly_df, x='hour', y='avg_tweets', title='24小时平均推文数',
-                          labels={'hour': 'UTC 小时', 'avg_tweets': '平均推文数'},
-                          color='avg_tweets', color_continuous_scale='Blues')
-        hour_fig.update_layout(xaxis={'tickmode': 'linear', 'dtick': 2}, showlegend=False,
-                               margin={'l': 40, 'r': 20, 't': 40, 'b': 40})
+        hour_fig = go.Figure(go.Bar(
+            x=hourly_df['hour'],
+            y=hourly_df['avg_tweets'],
+            marker=dict(
+                color=hourly_df['avg_tweets'],
+                colorscale='Blues',
+                showscale=False,
+            ),
+            hovertemplate='小时: %{x}<br>平均推文: %{y:.1f}<extra></extra>',
+        ))
+        hour_fig.update_layout(
+            title='24小时平均推文数',
+            xaxis=dict(title='UTC 小时', tickmode='linear', dtick=2),
+            yaxis=dict(title='平均推文数'),
+            showlegend=False,
+            margin=dict(l=40, r=20, t=40, b=40),
+        )
     else:
         hour_fig = go.Figure().add_annotation(text="暂无数据", showarrow=False)
 
@@ -178,11 +189,24 @@ def update_insights_hits(series, pathname):
     hist_df = get_histogram_data(series)
 
     if not hist_df.empty:
-        hist_fig = px.bar(hist_df.sort_values('range_start'), x='range_label', y='hit_count',
-                          title='各区间命中次数（所有事件合计）',
-                          labels={'x': '推文区间', 'y': '命中次数'}, color='hit_count',
-                          color_continuous_scale='Reds')
-        hist_fig.update_layout(xaxis={'tickangle': -45}, showlegend=False, margin={'l': 40, 'r': 20, 't': 40, 'b': 80})
+        df_sorted = hist_df.sort_values('range_start')
+        hist_fig = go.Figure(go.Bar(
+            x=df_sorted['range_label'],
+            y=df_sorted['hit_count'],
+            marker=dict(
+                color=df_sorted['hit_count'],
+                colorscale='Reds',
+                showscale=True,
+                colorbar=dict(title='命中次数', thickness=12),
+            ),
+            hovertemplate='区间: %{x}<br>命中次数: %{y}<extra></extra>',
+        ))
+        hist_fig.update_layout(
+            title='各区间命中次数（所有事件合计）',
+            xaxis=dict(title='推文区间', tickangle=-45),
+            yaxis=dict(title='命中次数'),
+            margin=dict(l=40, r=20, t=40, b=80),
+        )
     else:
         hist_fig = go.Figure().add_annotation(text="暂无数据", showarrow=False)
 
@@ -190,11 +214,19 @@ def update_insights_hits(series, pathname):
 
     if not corr_df.empty:
         correlation = corr_df['price_last'].corr(corr_df['tweet_count'])
-        corr_fig = px.scatter(corr_df, x='tweet_count', y='price_last',
-                              title=f'价格 vs 推文 (相关系数: {correlation:.3f})',
-                              labels={'tweet_count': '推文数', 'price_last': '价格'},
-                              opacity=0.5, color_discrete_sequence=['#3498db'])
-        corr_fig.update_layout(margin={'l': 40, 'r': 20, 't': 40, 'b': 40})
+        corr_fig = go.Figure(go.Scatter(
+            x=corr_df['tweet_count'],
+            y=corr_df['price_last'],
+            mode='markers',
+            marker=dict(size=6, color='#3498db', opacity=0.5),
+            hovertemplate='推文数: %{x}<br>价格: %{y:.4f}<extra></extra>',
+        ))
+        corr_fig.update_layout(
+            title=f'价格 vs 推文 (相关系数: {correlation:.3f})',
+            xaxis=dict(title='推文数'),
+            yaxis=dict(title='价格'),
+            margin=dict(l=40, r=20, t=40, b=40),
+        )
     else:
         corr_fig = go.Figure().add_annotation(text="暂无数据", showarrow=False)
 
