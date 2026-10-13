@@ -19,6 +19,7 @@ STRATEGY_REGISTRY = {
         'description': '基于推文速率估算与市场价格距离的方向判断（当前主力策略）',
         # 该策略允许被覆盖的参数
         'param_keys': [
+            'window_type',  # 策略级窗口（7d / gamestart / open）
             'capacity', 'price_threshold', 'distance_threshold',
             'inertia', 'momentum_enable', 'momentum_coef',
         ],
@@ -54,6 +55,16 @@ class StrategyConfig:
         merged = dict(base_params)
         merged.update(self.params)
         merged['strategy_id'] = self.strategy_type
+
+        # 策略覆盖了 window_type → 转成引擎三字段覆盖 base
+        if 'window_type' in self.params:
+            from src.dash_app.state.global_params import (
+                window_type_to_engine,
+            )
+            wt = self.params.get('window_type')
+            custom = self.params.get('window_custom_hours')
+            merged.update(window_type_to_engine(wt, custom))
+
         return merged
 
     def validate(self) -> List[str]:

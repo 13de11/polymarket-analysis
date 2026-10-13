@@ -28,6 +28,7 @@ PARAM_SCHEMA = {
         'id': 'window-type',
         'label': '推文速率窗口', 'type': 'enum',
         'options': ['7d', 'gamestart', 'open', 'custom'],
+        'card_options': ['7d', 'gamestart', 'open'],  # 卡片里不放 custom
         'option_labels': {'7d': '7天',
                           'gamestart': 'gamestart至今',
                           'open': '开盘至今',

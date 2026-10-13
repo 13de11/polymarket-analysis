@@ -72,6 +72,20 @@ def _create_override_row(idx_lower, param_key):
             style={'display': 'inline-block', 'fontSize': '11px',
                    'verticalAlign': 'middle'},
         ))
+    elif schema['type'] == 'enum':
+        opts = schema.get('card_options') or schema['options']
+        labels = schema.get('option_labels', {})
+        options = [{'label': labels.get(o, o), 'value': o}
+                   for o in opts]
+        row_children.append(dcc.Dropdown(
+            id=f'{base_id}-value',
+            options=options,
+            value=default_val,
+            clearable=False,
+            style={'width': '110px', 'fontSize': '11px',
+                   'display': 'inline-block',
+                   'verticalAlign': 'middle'},
+        ))
     else:
         row_children.append(dcc.Input(
             id=f'{base_id}-value', type='number', value=default_val,
