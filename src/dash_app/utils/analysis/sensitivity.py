@@ -6,6 +6,7 @@
 """
 
 import time
+import statistics
 import traceback
 from typing import Dict, Any, List, Optional
 
@@ -89,6 +90,122 @@ class SensitivityAnalysis:
         return {
             'param_value': best['param_value'],
             'metric_value': best['metric_value'],
+        }
+
+    # ================= 多市场敏感性 =================
+    @staticmethod
+    def run_sensitivity_multi_market(
+        base_params: Dict[str, Any],
+        param_name: str,
+        param_values: Optional[List[float]] = None,
+        metric_key: str = 'total_return',
+        market_pairs: Optional[List] = None,
+        series: str = '7d',
+        n_points: int = 10,
+    ) -> Dict[str, Any]:
+        """
+        在多个 (event_id, market_id) 上扫描单参数。
+
+        Y 轴 = 该参数值下所有市场的平均指标
+        辅助线 = 正收益市场占比（metric > 0）
+
+        Args:
+            base_params: 基础参数
+            param_name: 要扫描的参数
+            param_values: 参数值列表；None 时自动生成
+            metric_key: 追踪指标
+            market_pairs: [(event_id, market_id), ...]
+            series: '7d' | '48h'
+            n_points: 自动生成时的点数
+
+        Returns:
+            {
+                'param_name', 'metric_key', 'direction',
+                'param_values', 'results',
+                'best_value', 'error', 'n_markets',
+            }
+            results 每项：
+            {
+                'param_value', 'metric_value',         # 兼容 _find_best
+                'mean_metric', 'median_metric', 'std_metric',
+                'win_rate',                            # 正收益市场占比 %
+                'n_ok', 'n_total',
+            }
+        """
+        if param_name not in PARAM_SCHEMA:
+            return {'error': f'未知参数: {param_name}', 'results': []}
+        if metric_key not in METRIC_SCHEMA:
+            return {'error': f'未知指标: {metric_key}', 'results': []}
+        if not market_pairs:
+            return {'error': '未选择任何市场', 'results': []}
+
+        if not param_values:
+            param_values = get_param_range(param_name, n_points)
+
+        results: List[Dict[str, Any]] = []
+        n_total = len(market_pairs)
+
+        for val in param_values:
+            metrics_list: List[float] = []
+            n_ok = 0
+
+            for pair in market_pairs:
+                if not pair or len(pair) < 2:
+                    continue
+                eid, mid = pair[0], pair[1]
+                if not eid or not mid:
+                    continue
+
+                params = dict(base_params)
+                params[param_name] = val
+                params['event_id'] = eid
+                params['market_id'] = mid
+
+                try:
+                    r = run_backtest(params, series)
+                except Exception:
+                    r = None
+
+                if r and r.get('metrics'):
+                    mv = r['metrics'].get(metric_key)
+                    if mv is not None:
+                        try:
+                            metrics_list.append(float(mv))
+                            n_ok += 1
+                        except (TypeError, ValueError):
+                            pass
+
+            if metrics_list:
+                mean_v = statistics.mean(metrics_list)
+                median_v = statistics.median(metrics_list)
+                std_v = (statistics.stdev(metrics_list)
+                         if len(metrics_list) > 1 else 0.0)
+                win_rate = (sum(1 for v in metrics_list if v > 0)
+                            / len(metrics_list) * 100)
+            else:
+                mean_v = median_v = std_v = win_rate = None
+
+            results.append({
+                'param_value': val,
+                'metric_value': mean_v,          # 兼容 _find_best
+                'mean_metric': mean_v,
+                'median_metric': median_v,
+                'std_metric': std_v,
+                'win_rate': win_rate,
+                'n_ok': n_ok,
+                'n_total': n_total,
+            })
+
+        direction = METRIC_SCHEMA[metric_key].get('direction', 'max')
+        return {
+            'param_name': param_name,
+            'metric_key': metric_key,
+            'direction': direction,
+            'param_values': param_values,
+            'results': results,
+            'best_value': SensitivityAnalysis._find_best(results, metric_key),
+            'error': None,
+            'n_markets': n_total,
         }
 
     @staticmethod
