@@ -256,9 +256,9 @@ def main():
                 last_dt = datetime.fromisoformat(last_date.replace('Z', '+00:00'))
             else:
                 last_dt = datetime.fromisoformat(last_date)
-            start_dt = last_dt - timedelta(days=1)
+            start_dt = last_dt - timedelta(days=15)
             start_date_str = format_utc_datetime(start_dt)
-            print(f"增量模式：只拉取 {start_date_str} 之后的事件")
+            print(f"增量模式：拉取 {start_date_str} 之后的事件（回看 15 天）")
         else:
             print("全量模式（数据库中无该 tag 事件）")
     elif not args.full:
