@@ -16,7 +16,7 @@ from dash import (Input, Output, State, callback, no_update)
 from src.dash_app.utils.parsing import safe_float
 from src.dash_app.utils.data_loader import (
     get_elon_tweet_events, get_target_market,
-    get_target_markets_batch,
+    get_target_markets_batch, get_markets_by_event,
 )
 from src.dash_app.state.global_params import merge as _gp_merge
 
@@ -71,20 +71,26 @@ def update_cmp_events(series, pathname, global_params):
     prevent_initial_call=False,
 )
 def update_cmp_markets(event_id, current_market):
+    """事件选择 → 市场下拉填充全部市场（不只 target）"""
     if not event_id:
         return [], None
-    target = get_target_market(event_id)
-    if not target:
+    markets_df = get_markets_by_event(event_id)
+    if markets_df is None or markets_df.empty:
         return [], None
-    r_start = int(target['range_start'])
-    r_end = (int(target['range_end'])
-             if target['range_end']
-             and not str(target['range_end']) == 'nan'
-             else '∞')
-    label = (f"{target.get('name', '目标市场')} "
-             f"(命中: {r_start}-{r_end})")
-    options = [{'label': label, 'value': target['id']}]
-    value = current_market if current_market == target['id'] else target['id']
+    options = []
+    for _, row in markets_df.iterrows():
+        r_start = int(row['range_start'])
+        r_end = row.get('range_end')
+        if pd.isna(r_end) or r_end is None:
+            label = f"{r_start}-∞"
+        else:
+            label = f"{r_start}-{int(r_end)}"
+        options.append({'label': label, 'value': row['id']})
+    # 保留当前选择，否则选 target market
+    value = current_market
+    if value is None or not any(o['value'] == value for o in options):
+        target = get_target_market(event_id)
+        value = target['id'] if target else options[0]['value']
     return options, value
 
 

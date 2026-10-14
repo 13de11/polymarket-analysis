@@ -22,7 +22,8 @@ STRATEGY_REGISTRY = {
             'price_type',     # 观察维度
             'window_type',    # 策略级窗口（7d / gamestart / open）
             'capacity', 'price_threshold', 'distance_threshold',
-            'inertia', 'momentum_enable', 'momentum_coef',
+            'inertia',
+            'momentum_coef',  # 动量系数（动量修正默认启用，只调系数）
             'signal_mode',    # 信号显示模式
         ],
     },

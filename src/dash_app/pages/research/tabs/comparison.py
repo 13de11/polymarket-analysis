@@ -46,40 +46,64 @@ DEFAULT_ENABLED = {'a', 'b'}
 
 # ==================== UI ====================
 
+# 必选参数（下拉，不加勾选框）
+REQUIRED_PARAMS = {'price_type', 'window_type'}
+
+
 def _create_override_row(idx_lower, param_key):
-    """生成单个策略参数输入行（无勾选框，直接输入）"""
+    """生成策略参数行。
+    - price_type / window_type：必选下拉（无勾选框）
+    - 其他：勾选框 + 控件（勾了才覆盖）
+    """
     schema = PARAM_SCHEMA[param_key]
     defaults = DEFAULT_CARD_OVERRIDES.get(idx_lower, {})
+    is_default = param_key in defaults
     default_val = defaults.get(param_key, schema['default'])
     base_id = f'strategy-{idx_lower}-{param_key}'
 
+    # ---- 必选参数（下拉，无勾选框）----
+    if param_key in REQUIRED_PARAMS:
+        opts = schema.get('card_options') or schema['options']
+        labels = schema.get('option_labels', {})
+        options = [{'label': labels.get(o, o), 'value': o} for o in opts]
+        return html.Div([
+            html.Label(schema['label'], style={
+                'display': 'inline-block', 'width': '90px',
+                'fontSize': '11px', 'color': '#495057',
+                'verticalAlign': 'middle',
+            }),
+            dcc.Dropdown(
+                id=f'{base_id}-value',
+                options=options, value=default_val, clearable=False,
+                style={'width': '110px', 'fontSize': '11px',
+                       'display': 'inline-block',
+                       'verticalAlign': 'middle'},
+            ),
+        ], id=f'{base_id}-row', style={'marginBottom': '4px', 'lineHeight': '1.7'})
+
+    # ---- 其他参数：勾选框 + 标签 + 控件 ----
     row_children = [
+        dcc.Checklist(
+            id=f'{base_id}-enable',
+            options=[{'label': '', 'value': 'on'}],
+            value=['on'] if is_default else [],
+            style={'display': 'inline-block', 'width': '18px',
+                   'marginRight': '4px', 'verticalAlign': 'middle'},
+        ),
         html.Label(schema['label'], style={
-            'display': 'inline-block', 'width': '90px',
+            'display': 'inline-block', 'width': '72px',
             'fontSize': '11px', 'color': '#495057',
             'verticalAlign': 'middle',
         }),
     ]
 
-    if schema['type'] == 'bool':
-        row_children.append(dcc.RadioItems(
-            id=f'{base_id}-value',
-            options=[{'label': ' 开', 'value': True},
-                     {'label': ' 关', 'value': False}],
-            value=default_val, inline=True,
-            style={'display': 'inline-block', 'fontSize': '11px',
-                   'verticalAlign': 'middle'},
-        ))
-    elif schema['type'] == 'enum':
+    if schema['type'] == 'enum':
         opts = schema.get('card_options') or schema['options']
         labels = schema.get('option_labels', {})
-        options = [{'label': labels.get(o, o), 'value': o}
-                   for o in opts]
+        options = [{'label': labels.get(o, o), 'value': o} for o in opts]
         row_children.append(dcc.Dropdown(
             id=f'{base_id}-value',
-            options=options,
-            value=default_val,
-            clearable=False,
+            options=options, value=default_val, clearable=False,
             style={'width': '110px', 'fontSize': '11px',
                    'display': 'inline-block',
                    'verticalAlign': 'middle'},
@@ -260,7 +284,10 @@ def _btn_style(color):
 
 def _register_card_sync(idx_lower):
     """收集策略卡片的全部参数值 → research-strategy-{idx}-store。
-    无勾选框，参数直接收集（按策略类型过滤不支持的参数行已由 visibility 控制）"""
+    两种参数收集方式：
+    - price_type/window_type（必选）：直接读 -value
+    - 其他：读 -enable + -value（勾了才收集）
+    """
     prefix = f'strategy-{idx_lower}'
     store_id = f'research-strategy-{idx_lower}-store'
     all_params = get_all_override_param_keys()
@@ -271,7 +298,11 @@ def _register_card_sync(idx_lower):
         Input(f'{prefix}-type', 'value'),
     ]
     for p in all_params:
-        inputs.append(Input(f'{prefix}-{p}-value', 'value'))
+        if p in REQUIRED_PARAMS:
+            inputs.append(Input(f'{prefix}-{p}-value', 'value'))
+        else:
+            inputs.append(Input(f'{prefix}-{p}-enable', 'value'))
+            inputs.append(Input(f'{prefix}-{p}-value', 'value'))
 
     def _make_fn():
         def sync(*args):
@@ -281,10 +312,16 @@ def _register_card_sync(idx_lower):
             rest = args[3:]
             allowed = set(get_strategy_param_keys(stype))
             params = {}
-            for i, p in enumerate(all_params):
-                val = rest[i]
-                if p in allowed and val is not None:
-                    params[p] = val
+            idx = 0
+            for p in all_params:
+                if p in REQUIRED_PARAMS:
+                    val = rest[idx]; idx += 1
+                    if p in allowed and val is not None:
+                        params[p] = val
+                else:
+                    en = rest[idx]; val = rest[idx + 1]; idx += 2
+                    if en and 'on' in en and p in allowed and val is not None:
+                        params[p] = val
             return {
                 'enabled': bool(enabled),
                 'name': name or f'策略{idx_lower.upper()}',
