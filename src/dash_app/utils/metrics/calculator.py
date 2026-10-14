@@ -113,7 +113,11 @@ def calculate_max_drawdown(equity_curve: List[Dict]) -> tuple:
 
 
 def calculate_sharpe_ratio(equity_curve: List[Dict]) -> float:
-    """计算夏普比率（无风险利率为0）"""
+    """计算夏普比率（无风险利率为0，不年化）
+
+    F1 修正：去掉 sqrt(252*24) 年化因子——事件只有 7 天 / 48 小时，
+    年化会严重虚高。返回周期内原始 mean/std。
+    """
     if len(equity_curve) < 2:
         return 0
 
@@ -129,8 +133,7 @@ def calculate_sharpe_ratio(equity_curve: List[Dict]) -> float:
     if std_return == 0:
         return 0
 
-    annual_factor = np.sqrt(252 * 24)
-    return (avg_return / std_return) * annual_factor
+    return float(avg_return / std_return)
 
 
 def format_metrics_for_display(metrics: Dict) -> Dict:

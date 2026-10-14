@@ -333,14 +333,17 @@ line=dict(color=COLOR_PRIMARY)
 | IN-7 | `update_tweet_explorer` 拆出 `_resolve_range` + `_compute_stats` 纯函数 |
 | T1 | 全仓回调统一 `@callback` 自动注册，删 `register_callbacks` 手动链 |
 | T2 | insights/research Tab 改用 `dcc.Tab` children 机制，删 style-toggle 回调 |
+| C1 | 跨页带参修复：两段式回调 + `refresh=True` 整页刷新 + `storage_type='session'` 持久化 |
+| F1 | Sharpe 去年化：去掉 `sqrt(252*24)` 年化因子，返回周期内原始 mean/std |
+| S4 | equity_curve Timestamp 序列化：经验证 Dash PlotlyJSONEncoder 已自动处理，非真实问题 |
 
-### 第一批：核心闭环 + 高风险 🔴
+### 第一批：核心闭环 + 高风险 ✅ 已完成
 
-| 编号 | 问题 | 修法 |
-|------|------|------|
-| **C1** | 跨页带参失效：研究→回测的参数传递断链（Dash 级联竞态 + 回测页不自动填充） | 拆两段回调 + 回测页加"检测外部参数→自动填充+运行" |
-| **F1** | Sharpe 年化因子不对：`sqrt(252*24)≈77.8` 按 252 天×24 小时年化，但事件只有 7 天 / 48 小时，Sharpe 虚高 | 改为不年化或按实际数据跨度算 |
-| **S4** | `equity_curve` 存 pandas Timestamp，`dcc.Store` JSON 序列化可能静默失败 | `cache_backtest_result` 里 Timestamp → ISO 字符串 |
+| 编号 | 问题 | 修法 | 结果 |
+|------|------|------|------|
+| C1 | 跨页带参失效 | 两段式回调 + refresh + session 存储 | 研究→回测闭环跑通 |
+| F1 | Sharpe 年化虚高 | 去掉 `sqrt(252*24)` 年化因子 | Sharpe 从 5.29 → 0.068（周期内原始值） |
+| S4 | equity_curve Timestamp 序列化风险 | 验证后确认非问题 | Dash 编码器自动转 ISO 字符串 |
 
 ### 第二批：一致性 + 指标补全 🟡
 
@@ -389,9 +392,8 @@ line=dict(color=COLOR_PRIMARY)
 
 | 问题 | 影响 | 状态 |
 |------|------|------|
-| C1 跨页带参 | 策略对比表"→ 信号回测"按钮点击后参数未正确带入回测页 | 第一批待修 |
 | `research-params-store` State 跨页告警 | 在 /backtest 页时 console 出现 nonexistent object 警告 | 无害（suppress_callback_exceptions 未完全吞 State 校验），不影响功能 |
-| Sharpe 年化虚高 | 7 天回测算出 Sharpe 5+ 是年化因子膨胀所致 | 第一批待修 |
+| Sharpe 为周期内值非年化值 | 数字偏小（如 0.07），不能与传统年化 Sharpe（1~3）直接比 | 设计如此：7 天数据不该年化，衡量的是回测期内每小时信噪比 |
 
 ---
 
@@ -406,9 +408,8 @@ line=dict(color=COLOR_PRIMARY)
 
 ## 📌 版本状态
 
-- **稳定可用**：观察层（`/`、`/analysis`、`/insights`）、回测模块、策略研究三 Tab
-- **已知失效**：跨页带参 C1（按钮保留但无效，第一批待修）
-- **审计发现**：Sharpe 年化虚高、metrics 两套实现、equity_curve 序列化风险（详见整改路线图）
+- **稳定可用**：观察层（`/`、`/analysis`、`/insights`）、回测模块、策略研究三 Tab、跨页带参闭环（C1 已修）
+- **审计整改**：第一批（C1/F1/S4）已完成，第二批（指标一致性 + 补全）进行中（详见整改路线图）
 
 ---
 

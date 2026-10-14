@@ -312,7 +312,12 @@ class BacktestEngine:
         return max_drawdown, max_drawdown_pct
 
     def _calculate_sharpe_ratio(self) -> float:
-        """计算夏普比率（简化版，假设无风险利率为0）"""
+        """计算夏普比率（无风险利率为0，不年化）
+
+        F1 修正：原实现用 sqrt(252*24)≈77.8 年化，但事件只有 7 天 / 48 小时，
+        年化后的 Sharpe 严重虚高（7 天回测算出 5+）。改为返回周期内原始
+        mean/std，数字小但诚实——它衡量的是回测期内每小时的信噪比。
+        """
         if len(self.equity_curve) < 2:
             return 0
 
@@ -328,6 +333,4 @@ class BacktestEngine:
         if std_return == 0:
             return 0
 
-        # 年化（假设小时级数据，252天*24小时）
-        annual_factor = np.sqrt(252 * 24)
-        return (avg_return / std_return) * annual_factor
+        return float(avg_return / std_return)
