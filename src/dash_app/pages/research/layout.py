@@ -1,19 +1,19 @@
 """
 策略研究 - 页面布局
 
-T2：Tab 内容内嵌为 dcc.Tab children，Dash 原生管显隐，
-    不再需要 switch_research_tab style-toggle 回调。
+Phase 3：左侧改用共享参数面板 create_shared_panel（param-* 前缀），
+与 /backtest 页复用同一套组件 ID 和事件/市场联动回调。
 """
 
 from dash import html, dcc
 
-from src.dash_app.pages.research.filter_panel import create_research_panel
+from src.dash_app.pages.shared.params_panel import create_shared_panel
 from src.dash_app.pages.research.tabs.comparison import render_comparison_tab
 from src.dash_app.pages.research.tabs.sensitivity import render_sensitivity_tab
 from src.dash_app.pages.research.tabs.batch import render_batch_tab
 
 
-def layout():
+def layout(global_params=None):
     return html.Div([
         html.Div([
             html.H2("🔬 策略研究", style={'marginBottom': 2}),
@@ -22,18 +22,19 @@ def layout():
         ], style={'marginBottom': 15}),
 
         html.Div([
-            # 左侧参数面板
+            # 左侧：共享参数面板 + research-params-store
             html.Div([
-                create_research_panel()
+                create_shared_panel(global_params=global_params),
+                dcc.Store(id='research-params-store', data={}),
             ], className='backtest-left', style={
                 'width': '28%',
                 'display': 'inline-block',
                 'verticalAlign': 'top',
                 'paddingRight': '20px',
-                'boxSizing': 'border-box'
+                'boxSizing': 'border-box',
             }),
 
-            # 右侧结果区
+            # 右侧：结果区
             html.Div([
                 html.Div([
                     html.H4("📊 研究结果", style={'margin': 0, 'color': '#2c3e50'}),

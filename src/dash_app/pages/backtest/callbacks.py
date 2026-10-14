@@ -31,7 +31,7 @@ from src.dash_app.pages.backtest.tabs.evaluation import render_evaluation
     Input('url', 'pathname'),
 )
 def toggle_custom_range(range_type, pathname):
-    if pathname != '/backtest':
+    if pathname not in ('/backtest', '/research'):
         return no_update
     if range_type == 'custom':
         return {'display': 'block', 'marginTop': '8px'}
@@ -46,7 +46,7 @@ def toggle_custom_range(range_type, pathname):
     Input('global-params', 'data'),
 )
 def update_markets(event_id, pathname, global_params):
-    if pathname != '/backtest':
+    if pathname not in ('/backtest', '/research'):
         return no_update, no_update
     if not event_id:
         return [], None
@@ -81,7 +81,7 @@ def update_markets(event_id, pathname, global_params):
     Input('global-params', 'data'),
 )
 def update_events_on_series_change(series, pathname, global_params):
-    if pathname != '/backtest':
+    if pathname not in ('/backtest', '/research'):
         return no_update, no_update
     events_df = get_elon_tweet_events(series)
     if events_df.empty:
