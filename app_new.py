@@ -110,7 +110,7 @@ def display_page(pathname, global_params):
     elif pathname == '/backtest':
         return backtest_layout(global_params)
     elif pathname == '/research':
-        return research.layout(global_params)
+        return backtest_layout(global_params)
     else:
         return home.layout()
 

@@ -21,6 +21,9 @@ from src.dash_app.pages.backtest.tabs.preview import render_preview_tab
 from src.dash_app.pages.backtest.tabs.overview import render_overview_tab
 from src.dash_app.pages.backtest.tabs.trades import render_trades_tab
 from src.dash_app.pages.backtest.tabs.evaluation import render_evaluation
+from src.dash_app.pages.research.tabs.comparison import render_comparison_tab
+from src.dash_app.pages.research.tabs.sensitivity import render_sensitivity_tab
+from src.dash_app.pages.research.tabs.batch import render_batch_tab
 
 
 # ==================== 参数面板联动 ====================
@@ -229,6 +232,15 @@ def _placeholder(msg):
     State('series-selector', 'value'),
 )
 def render_tab_content(tab_name, cached_result, params, series):
+    # ---- Research tabs：始终可访问（不依赖回测结果） ----
+    if tab_name == 'comparison':
+        return render_comparison_tab(), "🔬 策略对比"
+    if tab_name == 'sensitivity':
+        return render_sensitivity_tab(), "📊 敏感性分析"
+    if tab_name == 'batch':
+        return render_batch_tab(), "📦 批量研究"
+
+    # ---- Backtest tabs：需要先选事件+市场 ----
     if not params or not params.get('market_id'):
         return _placeholder("请选择事件和市场，点击「运行回测」"), \
                "请选择事件和市场"

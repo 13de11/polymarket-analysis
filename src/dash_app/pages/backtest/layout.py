@@ -6,14 +6,17 @@
 from dash import html, dcc
 
 from src.dash_app.pages.shared.params_panel import create_shared_panel
+from src.dash_app.pages.research.tabs.comparison import render_comparison_tab
+from src.dash_app.pages.research.tabs.sensitivity import render_sensitivity_tab
+from src.dash_app.pages.research.tabs.batch import render_batch_tab
 
 
 def layout(global_params=None):
     return html.Div([
 
         html.Div([
-            html.H2("📈 预测回测系统", style={'marginBottom': 2}),
-            html.P("基于推文热度的方向预测与模拟交易回测",
+            html.H2("📊 分析工作台", style={'marginBottom': 2}),
+            html.P("信号预览 · 绩效回测 · 策略对比 · 敏感性 · 批量研究",
                    style={'color': '#6c757d', 'fontSize': '14px',
                           'marginTop': 0}),
         ], style={'marginBottom': 15}),
@@ -106,6 +109,9 @@ def layout(global_params=None):
                         dcc.Tab(label='📊 绩效概览', value='overview'),
                         dcc.Tab(label='📋 交易明细', value='trades'),
                         dcc.Tab(label='📈 策略评估', value='evaluation'),
+                        dcc.Tab(label='🔬 策略对比', value='comparison'),
+                        dcc.Tab(label='📊 敏感性分析', value='sensitivity'),
+                        dcc.Tab(label='📦 批量研究', value='batch'),
                     ],
                     style={'marginBottom': '15px'},
                 ),
@@ -115,6 +121,7 @@ def layout(global_params=None):
                                        style={'minHeight': '400px'})],
                 ),
                 dcc.Store(id='backtest-result-store', data={}),
+                dcc.Store(id='research-params-store', data={}),
             ], className='backtest-right', style={
                 'width': '70%', 'display': 'inline-block',
                 'verticalAlign': 'top', 'boxSizing': 'border-box',
