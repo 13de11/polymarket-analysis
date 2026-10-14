@@ -1,10 +1,12 @@
 """
 策略研究 - 精简参数面板
 与回测页独立，ID 前缀 research-
+
+T1：回调统一为模块级 @callback（import 时自动注册），
+    不再依赖 register_research_callbacks(app) 手动注册链。
 """
 
-import dash
-from dash import html, dcc, Input, Output, State
+from dash import html, dcc, Input, Output, callback, no_update
 import pandas as pd
 from src.dash_app.utils.parsing import safe_float
 
@@ -204,116 +206,117 @@ def create_research_panel(series='7d'):
     })
 
 
-def register_research_callbacks(app):
-    """注册研究页回调"""
+# ========== 回调 1：事件 → 市场联动 ==========
 
-    # ===== 事件 → 市场联动 =====
-    @app.callback(
-        Output('research-market-selector', 'options'),
-        Output('research-market-selector', 'value'),
-        Input('research-event-selector', 'value'),
-    )
-    def update_research_markets(event_id):
-        if not event_id:
-            return [], None
-        markets_df = get_markets_by_event(event_id)
-        if markets_df.empty:
-            return [], None
-        options = []
-        for _, row in markets_df.iterrows():
-            r_start = int(row['range_start'])
-            if pd.isna(row['range_end']) or row['range_end'] is None:
-                label = f"{r_start}-∞"
-            else:
-                label = f"{r_start}-{int(row['range_end'])}"
-            options.append({'label': label, 'value': row['id']})
-        target = get_target_market(event_id)
-        default_value = target['id'] if target else None
-        return options, default_value
-
-    # ===== 系列切换：更新事件列表 =====
-    @app.callback(
-        Output('research-event-selector', 'options'),
-        Output('research-event-selector', 'value'),
-        Input('series-selector', 'value'),
-        Input('url', 'pathname'),
-    )
-    def update_research_events_on_series_change(series, pathname):
-        from dash import no_update
-        if pathname != '/research':
-            return no_update, no_update
-
-        events_df = get_elon_tweet_events(series)
-        if events_df.empty:
-            return [], None
-
-        event_ids = events_df['id'].tolist()
-        targets_map = get_target_markets_batch(event_ids)
-
-        event_options = []
-        for _, row in events_df.iterrows():
-            target = targets_map.get(row['id'])
-            if target:
-                r_start = int(target['range_start'])
-                r_end = int(target['range_end']) if target['range_end'] and not pd.isna(target['range_end']) else '∞'
-                label = f"{row['slug']} (命中: {r_start}-{r_end})"
-            else:
-                label = row['slug']
-            event_options.append({'label': label, 'value': row['id']})
-
-        default_event = events_df.iloc[-1]['id'] if not events_df.empty else None
-        return event_options, default_event
-
-    # ===== 保存参数 =====
-    @app.callback(
-        Output('research-params-store', 'data'),
-        Input('research-event-selector', 'value'),
-        Input('research-market-selector', 'value'),
-        Input('research-price-type', 'value'),
-        Input('research-window-type', 'value'),
-        Input('research-capacity', 'value'),
-        Input('research-price-threshold', 'value'),
-        Input('research-distance-threshold', 'value'),
-        Input('research-inertia', 'value'),
-        Input('research-momentum-enable', 'value'),
-        Input('research-momentum-coef', 'value'),
-        Input('research-initial-capital', 'value'),
-        Input('research-position-mode', 'value'),
-        Input('research-position-size', 'value'),
-    )
-    def save_research_params(event_id, market_id, price_type, window_type,
-                             capacity, price_threshold, distance_threshold, inertia,
-                             momentum_enable, momentum_coef,
-                             initial_capital, position_mode, position_size):
-        if not market_id:
-            return {}
-
-        if window_type == '7d':
-            window_mode, window_param, window_start = 'rolling', 168, None
-        elif window_type == 'gamestart':
-            window_mode, window_param, window_start = 'expanding', None, 'gamestart'
+@callback(
+    Output('research-market-selector', 'options'),
+    Output('research-market-selector', 'value'),
+    Input('research-event-selector', 'value'),
+)
+def update_research_markets(event_id):
+    if not event_id:
+        return [], None
+    markets_df = get_markets_by_event(event_id)
+    if markets_df.empty:
+        return [], None
+    options = []
+    for _, row in markets_df.iterrows():
+        r_start = int(row['range_start'])
+        if pd.isna(row['range_end']) or row['range_end'] is None:
+            label = f"{r_start}-∞"
         else:
-            window_mode, window_param, window_start = 'expanding', None, 'open'
+            label = f"{r_start}-{int(row['range_end'])}"
+        options.append({'label': label, 'value': row['id']})
+    target = get_target_market(event_id)
+    default_value = target['id'] if target else None
+    return options, default_value
 
-        return {
-            'event_id': event_id,
-            'market_id': market_id,
-            'price_type': price_type or 'price_last',
-            'window_type': window_type,
-            'window_mode': window_mode,
-            'window_param': window_param,
-            'window_start': window_start,
-            'capacity': capacity or 0,
-            'price_threshold': price_threshold or 0.005,
-            'distance_threshold': distance_threshold or 1.5,
-            'inertia': inertia or 6,
-            'momentum_enable': momentum_enable,
-            'momentum_coef': momentum_coef or 0.10,
-            'signal_mode': 'start',
-            'initial_capital': safe_float(initial_capital, default=100.0,
-                                          min_val=1.0),
-            'position_mode': position_mode or 'fixed_amount',
-            'position_size': safe_float(position_size, default=10.0,
-                                        min_val=0.01),
-            'backtest_range': 'full',
-        }
+
+# ========== 回调 2：系列切换，更新事件列表 ==========
+
+@callback(
+    Output('research-event-selector', 'options'),
+    Output('research-event-selector', 'value'),
+    Input('series-selector', 'value'),
+    Input('url', 'pathname'),
+)
+def update_research_events_on_series_change(series, pathname):
+    if pathname != '/research':
+        return no_update, no_update
+
+    events_df = get_elon_tweet_events(series)
+    if events_df.empty:
+        return [], None
+
+    event_ids = events_df['id'].tolist()
+    targets_map = get_target_markets_batch(event_ids)
+
+    event_options = []
+    for _, row in events_df.iterrows():
+        target = targets_map.get(row['id'])
+        if target:
+            r_start = int(target['range_start'])
+            r_end = int(target['range_end']) if target['range_end'] and not pd.isna(target['range_end']) else '∞'
+            label = f"{row['slug']} (命中: {r_start}-{r_end})"
+        else:
+            label = row['slug']
+        event_options.append({'label': label, 'value': row['id']})
+
+    default_event = events_df.iloc[-1]['id'] if not events_df.empty else None
+    return event_options, default_event
+
+
+# ========== 回调 3：保存参数 ==========
+
+@callback(
+    Output('research-params-store', 'data'),
+    Input('research-event-selector', 'value'),
+    Input('research-market-selector', 'value'),
+    Input('research-price-type', 'value'),
+    Input('research-window-type', 'value'),
+    Input('research-capacity', 'value'),
+    Input('research-price-threshold', 'value'),
+    Input('research-distance-threshold', 'value'),
+    Input('research-inertia', 'value'),
+    Input('research-momentum-enable', 'value'),
+    Input('research-momentum-coef', 'value'),
+    Input('research-initial-capital', 'value'),
+    Input('research-position-mode', 'value'),
+    Input('research-position-size', 'value'),
+)
+def save_research_params(event_id, market_id, price_type, window_type,
+                         capacity, price_threshold, distance_threshold, inertia,
+                         momentum_enable, momentum_coef,
+                         initial_capital, position_mode, position_size):
+    if not market_id:
+        return {}
+
+    if window_type == '7d':
+        window_mode, window_param, window_start = 'rolling', 168, None
+    elif window_type == 'gamestart':
+        window_mode, window_param, window_start = 'expanding', None, 'gamestart'
+    else:
+        window_mode, window_param, window_start = 'expanding', None, 'open'
+
+    return {
+        'event_id': event_id,
+        'market_id': market_id,
+        'price_type': price_type or 'price_last',
+        'window_type': window_type,
+        'window_mode': window_mode,
+        'window_param': window_param,
+        'window_start': window_start,
+        'capacity': capacity or 0,
+        'price_threshold': price_threshold or 0.005,
+        'distance_threshold': distance_threshold or 1.5,
+        'inertia': inertia or 6,
+        'momentum_enable': momentum_enable,
+        'momentum_coef': momentum_coef or 0.10,
+        'signal_mode': 'start',
+        'initial_capital': safe_float(initial_capital, default=100.0,
+                                      min_val=1.0),
+        'position_mode': position_mode or 'fixed_amount',
+        'position_size': safe_float(position_size, default=10.0,
+                                    min_val=0.01),
+        'backtest_range': 'full',
+    }

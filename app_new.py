@@ -137,8 +137,7 @@ def highlight_nav(pathname):
         return active, base, base, base, base
 
 
-# 注意：backtest 的回调已在 import callbacks 时通过 @callback 自动注册
-research.register_callbacks(app)
+# 注意：backtest / research 的回调均在 import 时通过 @callback 自动注册
 
 
 if __name__ == '__main__':

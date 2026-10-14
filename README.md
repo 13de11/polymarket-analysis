@@ -62,7 +62,6 @@ Polymarket_Analysis/
 │   │   └── research/
 │   │       ├── layout.py
 │   │       ├── filter_panel.py
-│   │       ├── experiment_manager.py
 │   │       └── tabs/
 │   │           ├── comparison.py
 │   │           ├── sensitivity.py
@@ -354,7 +353,7 @@ HM-3（首页缺策略研究入口）、HM-2（最后更新假数据）、PT-4�
 | IN-3 说明块抽组件 | ✅ 完成（`info_block` + CSS 类） |
 | IN-7 `update_tweet_explorer` 拆分 | ✅ 完成（拆出 `_resolve_range` + `_compute_stats` 纯函数；顺带删死代码、`get_event_time_range` 查询 2→1） |
 | **R4** 策略类型扩展 | 🔲 待做 |
-| **T1** 回调风格统一 | 🔲 待做 |
+| T1 回调风格统一 | ✅ 完成（全仓统一 `@callback` 自动注册，删 `register_callbacks` 手动链） |
 | **T2** Tab 用 `dcc.Tabs` children 机制 | 🔲 待做 |
 | **B3** 参数面板统一到 schema（research 侧） | 🔲 待做 |
 

@@ -143,7 +143,7 @@ def layout():
         ], style={'fontSize': '14px'})
     ])
 
-from dash import Input, Output, callback
+from dash import Input, Output, callback, no_update
 
 
 @callback(
@@ -153,7 +153,6 @@ from dash import Input, Output, callback
     Input('url', 'pathname'),
 )
 def _update_home_kpi(series, pathname):
-    from dash import no_update
     if pathname not in ('/', None):
         return no_update, no_update
     series = series or '7d'
