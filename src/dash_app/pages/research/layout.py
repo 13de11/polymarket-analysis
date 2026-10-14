@@ -29,9 +29,11 @@ def layout(global_params=None, series='7d'):
                         children=render_comparison_tab(
                             global_params=global_params, series=series)),
                 dcc.Tab(label='📊 敏感性分析', value='sensitivity',
-                        children=render_sensitivity_tab()),
+                        children=render_sensitivity_tab(
+                            global_params=global_params, series=series)),
                 dcc.Tab(label='📦 批量研究', value='batch',
-                        children=render_batch_tab()),
+                        children=render_batch_tab(
+                            global_params=global_params, series=series)),
             ],
             style={'marginBottom': '15px'},
         ),

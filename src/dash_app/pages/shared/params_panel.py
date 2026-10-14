@@ -132,12 +132,13 @@ def create_schema_section(prefix: str, group: str,
 
 # ==================== 共享参数面板（param-* 前缀） ====================
 
-def create_shared_panel(global_params=None, series='7d', prefix='param'):
+def create_shared_panel(global_params=None, series='7d', prefix='param',
+                        include_event_market=True):
     """
     创建共享参数面板（默认 param-* 前缀）
 
-    /backtest 用 prefix='param'；/research 的 comparison tab 用 prefix='cmp'
-    实现自包含配置区——每个页面/tab 用自己的前缀，组件 ID 不冲突。
+    /backtest 用 prefix='param'；/research 的 comparison/sensitivity tab 用 'cmp'/'sens'；
+    batch tab 用 prefix='batch' + include_event_market=False（不含事件/市场，用多选选择器）。
     事件/市场下拉从 data_loader 填充；schema 参数从 PARAM_SCHEMA 生成。
     页面自行添加按钮和页面特有组件（如 research 的策略卡片）。
 
@@ -199,49 +200,60 @@ def create_shared_panel(global_params=None, series='7d', prefix='param'):
     custom_hours = str(global_params.get('window_custom_hours') or '') if global_params else ''
     range_custom = list(global_params.get('backtest_range_custom') or [0, 100]) if global_params else [0, 100]
 
-    return html.Div([
-
+    children = [
         html.Div([
             html.H4("📊 参数配置", style={'margin': 0, 'color': '#2c3e50'}),
             html.P("按顺序配置四步参数",
-                   style={'fontSize': '12px', 'color': '#7f8c8d', 'margin': '4px 0 0 0'}),
-        ], style={'borderBottom': '2px solid #3498db', 'paddingBottom': '10px', 'marginBottom': '15px'}),
+                   style={'fontSize': '12px', 'color': '#7f8c8d',
+                          'margin': '4px 0 0 0'}),
+        ], style={'borderBottom': '2px solid #3498db',
+                  'paddingBottom': '10px', 'marginBottom': '15px'}),
+    ]
 
-        # ---- 数据选择 ----
-        html.Details([
-            html.Summary("📊 数据选择",
-                         style={'fontWeight': 'bold', 'fontSize': '14px', 'cursor': 'pointer'}),
-            html.Div([
+    if include_event_market:
+        children.append(
+            html.Details([
+                html.Summary("📊 数据选择",
+                             style={'fontWeight': 'bold', 'fontSize': '14px',
+                                    'cursor': 'pointer'}),
                 html.Div([
-                    html.Label("事件:", style={'fontWeight': 'bold', 'fontSize': '13px'}),
-                    dcc.Dropdown(
-                        id=f'{prefix}-event-selector',
-                        options=event_options,
-                        value=default_event,
-                        placeholder='请选择事件',
-                        style={'width': '100%', 'marginTop': '3px'},
-                    ),
-                    html.Div("要回测的历史事件",
-                             style={'fontSize': '11px', 'color': '#7f8c8d', 'marginTop': '2px'}),
-                ], style={'marginBottom': '10px'}),
-                html.Div([
-                    html.Label("目标市场:", style={'fontWeight': 'bold', 'fontSize': '13px'}),
-                    dcc.Dropdown(
-                        id=f'{prefix}-market-selector',
-                        options=[],
-                        placeholder='请先选择事件',
-                        style={'width': '100%', 'marginTop': '3px'},
-                    ),
-                    html.Div("具体推文区间市场，决定中位数锚点",
-                             style={'fontSize': '11px', 'color': '#7f8c8d', 'marginTop': '2px'}),
-                ], style={'marginBottom': '0'}),
-            ], style={'padding': '8px 0 4px 0'}),
-        ], open=True, style={'marginBottom': '12px'}),
+                    html.Div([
+                        html.Label("事件:", style={'fontWeight': 'bold',
+                                                   'fontSize': '13px'}),
+                        dcc.Dropdown(
+                            id=f'{prefix}-event-selector',
+                            options=event_options,
+                            value=default_event,
+                            placeholder='请选择事件',
+                            style={'width': '100%', 'marginTop': '3px'},
+                        ),
+                        html.Div("要回测的历史事件",
+                                 style={'fontSize': '11px', 'color': '#7f8c8d',
+                                        'marginTop': '2px'}),
+                    ], style={'marginBottom': '10px'}),
+                    html.Div([
+                        html.Label("目标市场:", style={'fontWeight': 'bold',
+                                                          'fontSize': '13px'}),
+                        dcc.Dropdown(
+                            id=f'{prefix}-market-selector',
+                            options=[],
+                            placeholder='请先选择事件',
+                            style={'width': '100%', 'marginTop': '3px'},
+                        ),
+                        html.Div("具体推文区间市场，决定中位数锚点",
+                                 style={'fontSize': '11px', 'color': '#7f8c8d',
+                                        'marginTop': '2px'}),
+                    ], style={'marginBottom': '0'}),
+                ], style={'padding': '8px 0 4px 0'}),
+            ], open=True, style={'marginBottom': '12px'}),
+        )
 
+    children.extend([
         # ---- 观察维度 ----
         html.Details([
             html.Summary("🎚️ 观察维度",
-                         style={'fontWeight': 'bold', 'fontSize': '14px', 'cursor': 'pointer'}),
+                         style={'fontWeight': 'bold', 'fontSize': '14px',
+                                'cursor': 'pointer'}),
             create_schema_section(
                 prefix, 'dimension',
                 overrides=overrides,
@@ -252,10 +264,12 @@ def create_shared_panel(global_params=None, series='7d', prefix='param'):
                             type='text',
                             value=custom_hours,
                             placeholder='自定义小时数',
-                            style={'width': '60%', 'display': 'inline-block', 'marginTop': '4px'},
+                            style={'width': '60%', 'display': 'inline-block',
+                                   'marginTop': '4px'},
                         ),
                         html.Span(" 小时",
-                                  style={'fontSize': '12px', 'color': '#7f8c8d', 'marginLeft': '4px'}),
+                                  style={'fontSize': '12px', 'color': '#7f8c8d',
+                                         'marginLeft': '4px'}),
                     ], id=f'{prefix}-window-custom-container',
                        style={'marginTop': '4px', 'display': 'none'}),
                 ],
@@ -265,14 +279,16 @@ def create_shared_panel(global_params=None, series='7d', prefix='param'):
         # ---- 信号参数 ----
         html.Details([
             html.Summary("🧠 信号参数",
-                         style={'fontWeight': 'bold', 'fontSize': '14px', 'cursor': 'pointer'}),
+                         style={'fontWeight': 'bold', 'fontSize': '14px',
+                                'cursor': 'pointer'}),
             create_schema_section(prefix, 'signal', overrides=overrides),
         ], style={'marginBottom': '12px'}),
 
         # ---- 评价假设 ----
         html.Details([
             html.Summary("💰 评价假设",
-                         style={'fontWeight': 'bold', 'fontSize': '14px', 'cursor': 'pointer'}),
+                         style={'fontWeight': 'bold', 'fontSize': '14px',
+                                'cursor': 'pointer'}),
             create_schema_section(
                 prefix, 'execution',
                 overrides=overrides,
@@ -284,18 +300,20 @@ def create_shared_panel(global_params=None, series='7d', prefix='param'):
                             value=range_custom,
                             marks={0: '0%', 25: '25%', 50: '50%',
                                    75: '75%', 100: '100%'},
-                            tooltip={'placement': 'bottom', 'always_visible': False},
+                            tooltip={'placement': 'bottom',
+                                     'always_visible': False},
                         ),
                         html.Div("按事件时长百分比选择回测时段",
-                                 style={'fontSize': '11px', 'color': '#7f8c8d', 'marginTop': '2px'}),
+                                 style={'fontSize': '11px', 'color': '#7f8c8d',
+                                        'marginTop': '2px'}),
                     ], id=f'{prefix}-range-custom-container',
                        style={'display': 'none', 'marginTop': '8px'}),
                 ],
             ),
         ], style={'marginBottom': '20px'}),
+    ])
 
-        # 操作按钮由各页面自行添加
-    ], style={
+    return html.Div(children, style={
         'backgroundColor': 'white', 'padding': '15px', 'borderRadius': '8px',
         'border': '1px solid #e9ecef', 'height': 'fit-content',
     })

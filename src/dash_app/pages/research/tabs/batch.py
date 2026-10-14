@@ -25,13 +25,19 @@ from src.dash_app.utils.data_loader import (
 from src.dash_app.utils.research.batch import BatchEngine
 from src.dash_app.utils.research.strategy_config import StrategyConfig
 from src.dash_app.utils.ui.table import td, table as tbl
+from src.dash_app.pages.shared.params_panel import create_shared_panel
 
 
 STRATEGY_COLORS = {'a': '#3498db', 'b': '#e74c3c', 'c': '#2ecc71'}
 
 
-def render_batch_tab():
+def render_batch_tab(global_params=None, series='7d'):
     return html.Div([
+        # ---- batch-* 配置区（信号参数 + 交易设置，不含事件/市场）----
+        create_shared_panel(global_params=global_params, series=series,
+                            prefix='batch', include_event_market=False),
+        dcc.Store(id='batch-params-store', data={}),
+
         html.Div([
             html.P("选择研究模式后运行。模式A=多事件；模式B=单事件多子市场。",
                    style={'fontSize': '13px', 'color': '#495057',
@@ -229,7 +235,7 @@ def _populate_batch_markets(event_id):
     Output('research-batch-jump-area', 'style'),
     Input('research-batch-run-btn', 'n_clicks'),
     State('research-batch-mode', 'value'),
-    State('research-params-store', 'data'),
+    State('batch-params-store', 'data'),
     State('series-selector', 'value'),
     State('research-strategy-a-store', 'data'),
     State('research-strategy-b-store', 'data'),
@@ -247,7 +253,7 @@ def run_batch(n_clicks, mode, base_params, series, sa, sb, sc,
     if not n_clicks:
         return (no_update, no_update, no_update, no_update)
     if not base_params:
-        return (_warn("请先在左侧选择事件和市场（作为参数模板）"),
+        return (_warn("请先在上方配置信号参数和交易设置（作为参数模板）"),
                 [], None, _hidden)
 
     series = series or '7d'
