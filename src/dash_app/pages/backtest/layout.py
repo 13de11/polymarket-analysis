@@ -5,7 +5,7 @@
 
 from dash import html, dcc
 
-from src.dash_app.pages.backtest.params_panel import create_params_panel
+from src.dash_app.pages.shared.params_panel import create_shared_panel
 
 
 def layout(global_params=None):
@@ -65,7 +65,25 @@ def layout(global_params=None):
 
         html.Div([
             html.Div([
-                create_params_panel(global_params=global_params)
+                create_shared_panel(global_params=global_params),
+                # 运行按钮（合并：不再有单独的预览按钮）
+                html.Div([
+                    html.Button(
+                        '🚀 运行回测',
+                        id='param-run-btn',
+                        n_clicks=0,
+                        style={
+                            'width': '100%', 'padding': '10px',
+                            'backgroundColor': '#28a745', 'color': 'white',
+                            'border': 'none', 'borderRadius': '6px',
+                            'fontSize': '14px', 'fontWeight': 'bold',
+                            'cursor': 'pointer',
+                        },
+                    ),
+                ], style={'display': 'flex', 'marginBottom': '8px'}),
+                html.Div("点击「运行回测」跑完整回测，刷新所有 Tab",
+                         style={'fontSize': '11px', 'color': '#7f8c8d',
+                                'textAlign': 'center'}),
             ], className='backtest-left', style={
                 'width': '28%', 'display': 'inline-block',
                 'verticalAlign': 'top', 'paddingRight': '20px',

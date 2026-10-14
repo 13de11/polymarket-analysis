@@ -2,11 +2,10 @@
 """
 预测回测系统 - 所有回调
 
-用 @callback 装饰器（模块被 import 时自动注册）。
-app_new.py 里有一处 import 本模块，触发注册。
+Phase 2：参数组件 ID 统一为 param-* 前缀（与共享面板一致）。
+按钮合并为一个 param-run-btn，删掉 preview 按钮 + _trigger 逻辑。
 """
 
-import dash
 from dash import (html, Input, Output, State, callback, no_update)
 import pandas as pd
 
@@ -27,8 +26,8 @@ from src.dash_app.pages.backtest.tabs.evaluation import render_evaluation
 # ==================== 参数面板联动 ====================
 
 @callback(
-    Output('backtest-range-custom-container', 'style'),
-    Input('backtest-range', 'value'),
+    Output('param-range-custom-container', 'style'),
+    Input('param-range', 'value'),
     Input('url', 'pathname'),
 )
 def toggle_custom_range(range_type, pathname):
@@ -40,9 +39,9 @@ def toggle_custom_range(range_type, pathname):
 
 
 @callback(
-    Output('backtest-market-selector', 'options'),
-    Output('backtest-market-selector', 'value'),
-    Input('backtest-event-selector', 'value'),
+    Output('param-market-selector', 'options'),
+    Output('param-market-selector', 'value'),
+    Input('param-event-selector', 'value'),
     Input('url', 'pathname'),
     Input('global-params', 'data'),
 )
@@ -63,7 +62,6 @@ def update_markets(event_id, pathname, global_params):
             label = f"{r_start}-{int(row['range_end'])}"
         options.append({'label': label, 'value': row['id']})
 
-    # 优先使用 global-params 里的 market_id（且必须在当前 options 里）
     target_id = None
     if global_params and global_params.get('market_id'):
         mid = global_params['market_id']
@@ -76,13 +74,13 @@ def update_markets(event_id, pathname, global_params):
 
 
 @callback(
-    Output('backtest-event-selector', 'options'),
-    Output('backtest-event-selector', 'value'),
+    Output('param-event-selector', 'options'),
+    Output('param-event-selector', 'value'),
     Input('series-selector', 'value'),
     Input('url', 'pathname'),
     Input('global-params', 'data'),
 )
-def update_backtest_events_on_series_change(series, pathname, global_params):
+def update_events_on_series_change(series, pathname, global_params):
     if pathname != '/backtest':
         return no_update, no_update
     events_df = get_elon_tweet_events(series)
@@ -104,7 +102,6 @@ def update_backtest_events_on_series_change(series, pathname, global_params):
             label = row['slug']
         event_options.append({'label': label, 'value': row['id']})
 
-    # 优先使用 global-params 里的 event_id（且必须在当前 series 里）
     target_event = None
     if global_params and global_params.get('event_id'):
         eid = global_params['event_id']
@@ -117,35 +114,33 @@ def update_backtest_events_on_series_change(series, pathname, global_params):
 
 @callback(
     Output('global-params', 'data'),
-    Input('backtest-run-btn', 'n_clicks'),
-    Input('backtest-preview-btn', 'n_clicks'),
-    State('backtest-event-selector', 'value'),
-    State('backtest-market-selector', 'value'),
-    State('backtest-price-type', 'value'),
-    State('backtest-window-type', 'value'),
-    State('backtest-window-custom', 'value'),
-    State('backtest-capacity', 'value'),
-    State('backtest-price-threshold', 'value'),
-    State('backtest-distance-threshold', 'value'),
-    State('backtest-inertia', 'value'),
-    State('backtest-momentum-enable', 'value'),
-    State('backtest-momentum-coef', 'value'),
-    State('backtest-signal-mode', 'value'),
-    State('backtest-initial-capital', 'value'),
-    State('backtest-position-mode', 'value'),
-    State('backtest-position-size', 'value'),
-    State('backtest-range', 'value'),
-    State('backtest-range-custom', 'value'),
+    Input('param-run-btn', 'n_clicks'),
+    State('param-event-selector', 'value'),
+    State('param-market-selector', 'value'),
+    State('param-price-type', 'value'),
+    State('param-window-type', 'value'),
+    State('param-window-custom', 'value'),
+    State('param-capacity', 'value'),
+    State('param-price-threshold', 'value'),
+    State('param-distance-threshold', 'value'),
+    State('param-inertia', 'value'),
+    State('param-momentum-enable', 'value'),
+    State('param-momentum-coef', 'value'),
+    State('param-signal-mode', 'value'),
+    State('param-initial-capital', 'value'),
+    State('param-position-mode', 'value'),
+    State('param-position-size', 'value'),
+    State('param-range', 'value'),
+    State('param-range-custom', 'value'),
+    prevent_initial_call=True,
 )
-def save_params(n_clicks_run, n_clicks_preview, event_id, market_id,
+def save_params(n_clicks, event_id, market_id,
                 price_type, window_type, window_custom,
                 capacity, price_threshold, distance_threshold, inertia,
                 momentum_enable, momentum_coef, signal_mode,
                 initial_capital, position_mode, position_size,
                 backtest_range, backtest_range_custom):
-    trigger = (dash.callback_context.triggered[0]['prop_id']
-               if dash.callback_context.triggered else '')
-    if not trigger or (not n_clicks_run and not n_clicks_preview):
+    if not n_clicks:
         return no_update
 
     if window_type == '7d':
@@ -158,10 +153,6 @@ def save_params(n_clicks_run, n_clicks_preview, event_id, market_id,
         window_mode = 'rolling'
         window_param = safe_int(window_custom, default=168, min_val=1)
         window_start = None
-
-    triggered_id = (dash.callback_context.triggered_id
-                    if dash.callback_context.triggered else None)
-    trigger_type = 'run' if triggered_id == 'backtest-run-btn' else 'preview'
 
     return {
         'event_id': event_id,
@@ -185,13 +176,12 @@ def save_params(n_clicks_run, n_clicks_preview, event_id, market_id,
                                     min_val=0.01),
         'backtest_range': backtest_range or 'full',
         'backtest_range_custom': backtest_range_custom or [0, 100],
-        '_trigger': trigger_type,
     }
 
 
 @callback(
-    Output('backtest-window-custom-container', 'style'),
-    Input('backtest-window-type', 'value'),
+    Output('param-window-custom-container', 'style'),
+    Input('param-window-type', 'value'),
 )
 def toggle_custom_window(window_type):
     if window_type == 'custom':
@@ -207,15 +197,12 @@ def toggle_custom_window(window_type):
     prevent_initial_call=True,
 )
 def cache_backtest_result(params):
-    """监听 params-store。只有「运行回测」触发的更新才真正跑回测。"""
+    """监听 global-params，有 market_id 就跑回测（按钮合并后不再区分 trigger）。"""
     if not params or not params.get('market_id'):
         return {'error': '未选择事件或市场'}
-    if params.get('_trigger') != 'run':
-        return no_update
     result = run_backtest(params)
     if not result:
-        return {'error': '回测失败（数据不足或参数无效，'
-                         '请检查事件/市场/区间）'}
+        return {'error': '回测失败（数据不足或参数无效，请检查事件/市场/区间）'}
     return {
         'metrics': result.get('metrics', {}),
         'trades': result.get('trades', []),
@@ -238,11 +225,10 @@ def _placeholder(msg):
     Output('backtest-status-text', 'children'),
     Input('backtest-tabs', 'value'),
     Input('backtest-result-store', 'data'),
-    Input('backtest-preview-btn', 'n_clicks'),
     State('global-params', 'data'),
     State('series-selector', 'value'),
 )
-def render_tab_content(tab_name, cached_result, preview_n, params, series):
+def render_tab_content(tab_name, cached_result, params, series):
     if not params or not params.get('market_id'):
         return _placeholder("请选择事件和市场，点击「运行回测」"), \
                "请选择事件和市场"
@@ -276,28 +262,26 @@ def render_tab_content(tab_name, cached_result, preview_n, params, series):
 # ==================== 导入参数同步（C1） ====================
 
 @callback(
-    Output('backtest-price-type', 'value'),
-    Output('backtest-window-type', 'value'),
-    Output('backtest-window-custom', 'value'),
-    Output('backtest-capacity', 'value'),
-    Output('backtest-price-threshold', 'value'),
-    Output('backtest-distance-threshold', 'value'),
-    Output('backtest-inertia', 'value'),
-    Output('backtest-momentum-enable', 'value'),
-    Output('backtest-momentum-coef', 'value'),
-    Output('backtest-signal-mode', 'value'),
-    Output('backtest-initial-capital', 'value'),
-    Output('backtest-position-mode', 'value'),
-    Output('backtest-position-size', 'value'),
-    Output('backtest-range', 'value'),
-    Output('backtest-range-custom', 'value'),
+    Output('param-price-type', 'value'),
+    Output('param-window-type', 'value'),
+    Output('param-window-custom', 'value'),
+    Output('param-capacity', 'value'),
+    Output('param-price-threshold', 'value'),
+    Output('param-distance-threshold', 'value'),
+    Output('param-inertia', 'value'),
+    Output('param-momentum-enable', 'value'),
+    Output('param-momentum-coef', 'value'),
+    Output('param-signal-mode', 'value'),
+    Output('param-initial-capital', 'value'),
+    Output('param-position-mode', 'value'),
+    Output('param-position-size', 'value'),
+    Output('param-range', 'value'),
+    Output('param-range-custom', 'value'),
     Input('global-params', 'data'),
     prevent_initial_call=True,
 )
 def sync_panel_from_import(params):
-    """C1: global-params 带 _pending_nav 时，把导入的参数同步到面板组件。
-    回调在 store 写入时（第一段）触发，值被 Dash 缓存，
-    面板渲染时覆写初始默认值——绕过 display_page 的 State 时序问题。"""
+    """C1: global-params 带 _pending_nav 时同步到面板组件。"""
     if not params or not params.get('_pending_nav'):
         return tuple(no_update for _ in range(15))
     return (
