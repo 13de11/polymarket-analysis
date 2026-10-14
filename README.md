@@ -44,9 +44,9 @@ Polymarket_Analysis/
 │   │   ├── home.py
 │   │   ├── price_tweet_analysis.py
 │   │   ├── insights/
-│   │   │   ├── layout.py
+│   │   │   ├── layout.py         # Tab 内容内嵌 dcc.Tab children（T2）
 │   │   │   ├── callbacks.py
-│   │   │   ├── explorer.py
+│   │   │   ├── explorer.py       # IN-7 拆出纯计算函数
 │   │   │   └── _blocks.py        # 通用 UI 块（info_block 等）
 │   │   ├── shared/
 │   │   │   └── params_panel.py   # 参数面板生成器
@@ -60,8 +60,8 @@ Polymarket_Analysis/
 │   │   │       ├── trades.py
 │   │   │       └── evaluation.py
 │   │   └── research/
-│   │       ├── layout.py
-│   │       ├── filter_panel.py
+│   │       ├── layout.py         # Tab 内容内嵌 dcc.Tab children（T2）
+│   │       ├── filter_panel.py   # @callback 自动注册（T1）
 │   │       └── tabs/
 │   │           ├── comparison.py
 │   │           ├── sensitivity.py
@@ -74,23 +74,23 @@ Polymarket_Analysis/
 │       ├── ui/
 │       │   └── table.py          # 表格样式工具（td / th / table）
 │       ├── research/
-│       │   ├── params_schema.py
+│       │   ├── params_schema.py  # 参数 + 指标元数据（单一数据源）
 │       │   ├── strategy_config.py
 │       │   ├── experiment.py
 │       │   ├── storage.py
 │       │   ├── serialize.py
 │       │   └── batch.py
-│       ├── signal/generator.py
+│       ├── signal/generator.py   # 方向信号生成器（核心策略逻辑）
 │       ├── backtest/
-│       │   ├── engine.py
-│       │   ├── runner.py
-│       │   ├── prepare.py
-│       │   └── baseline.py
+│       │   ├── engine.py         # 回测引擎（模拟交易执行）
+│       │   ├── runner.py         # 回测执行器（组装 prepare+generator+engine）
+│       │   ├── prepare.py        # 数据准备（lru_cache）
+│       │   └── baseline.py       # 基线策略（buy_and_hold）
 │       ├── metrics/
-│       │   ├── calculator.py
-│       │   ├── accuracy.py
+│       │   ├── calculator.py     # 指标计算（独立函数）
+│       │   ├── accuracy.py       # 多窗口方向准确率
 │       │   └── hold_period.py
-│       ├── comparison/engine.py
+│       ├── comparison/engine.py  # 多策略对比引擎
 │       └── analysis/sensitivity.py
 │
 └── archives/
@@ -100,13 +100,13 @@ Polymarket_Analysis/
 
 ## 📄 页面结构
 
-| 路径 | 页面 | 功能 |
-|------|------|------|
-| `/` | 首页 | 功能卡片（4 个）+ KPI 数据概览（响应 series 切换） |
-| `/analysis` | 价格-推文分析 | 事件内各市场价格与推文关系 |
-| `/insights` | 数据分析中心 | 命中模式、推文热度图谱、推文探索器（4 Tab） |
-| `/backtest` | 预测回测 | 单事件信号评价（4 Tab） |
-| `/research` | 策略研究 | 策略对比、敏感性、批量研究（3 Tab） |
+| 路径 | 页面 | 功能 | Tab 机制 |
+|------|------|------|----------|
+| `/` | 首页 | 功能卡片 + KPI 数据概览（响应 series 切换） | — |
+| `/analysis` | 价格-推文分析 | 事件内各市场价格与推文关系 | — |
+| `/insights` | 数据分析中心 | 命中模式、推文热度图谱、推文探索器 | `dcc.Tab` children（T2） |
+| `/backtest` | 预测回测 | 单事件信号评价 | 懒渲染（`render_tab_content` 回调按 active tab 生成） |
+| `/research` | 策略研究 | 策略对比、敏感性、批量研究 | `dcc.Tab` children（T2） |
 
 ---
 
@@ -160,9 +160,9 @@ python scripts/data_fetcher/fetch_events.py --tag tweets-markets --full
 
 ### 1. 代码更新
 
-**本地**：
+**本地**（代码 + 文档单笔提交，git add 用显式文件名）：
 ```bash
-git add -A
+git add src/dash_app/pages/xxx.py README.md
 git commit -m "..."
 git push origin main
 ```
@@ -202,21 +202,6 @@ find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null
 
 ---
 
-## 🔧 常用脚本
-
-| 脚本 | 用途 |
-|------|------|
-| `scripts/build_final_db.py` | 从原始库构建精简库 |
-| `scripts/check_db.py` | 打印两个库的状态 |
-| `scripts/data_fetcher/run_all.py` | 一键拉取全流程 |
-| `scripts/data_fetcher/fetch_events.py` | 拉取事件（增量回看 15 天） |
-| `scripts/data_fetcher/fetch_markets.py` | 拉取市场 |
-| `scripts/data_fetcher/fetch_prices.py` | 拉取价格 |
-| `scripts/data_fetcher/import_tweets.py` | 导入推文（Excel → DB） |
-| `scripts/data_fetcher/aggregate_prices_tweets.py` | 聚合小时级数据 |
-
----
-
 ## 🧠 策略逻辑简述
 
 **方向判断**：
@@ -226,6 +211,7 @@ find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null
 4. 噪音过滤：距离变动 ≤ 阈值 且 价格变动 ≤ 阈值 → 不触发新信号
 5. 方向判断：距离变小 → ↑；变大 → ↓
 6. 惯性保护：连续 ≥ N 小时无有效信号 → 强制看平
+7. 动量修正：最近 6 小时速率变化调整估算总量（系数限制 0.8~1.2，递归累积）
 
 **推文速率窗口**：
 - `7d`：最近 168 小时滚动平均
@@ -234,11 +220,11 @@ find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null
 - `自定义`：最近 N 小时滚动平均
 
 **回测规则**：
-- ↑ 信号 + 空仓 → 开仓
+- ↑ 信号 + 空仓 → 开仓（做多）
 - ↓ 信号 + 持仓 → 平仓
 - → 信号 → 不动
 - 回测结束强制平仓
-- 仅做多
+- 仅做多，无交易成本/滑点
 
 **定位**：本工具的回测**不是策略优化器**，而是**信号处理效果的评价器**。
 
@@ -251,13 +237,13 @@ find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null
 1. **策略对比**：3 张策略卡片，每张可覆盖任意参数（含窗口类型）
    - 资金曲线对比 + 绩效散点图 + 指标对比表
    - 导出指标表 / 交易明细 CSV
+   - 一键带入信号回测（C1，当前失效，待修）
 2. **敏感性分析**：3 种模式
    - 单参单市场 / 双参单市场网格 / **单参多市场集合**
    - 多市场模式下：Y 轴为平均指标，辅助线为正收益市场占比
 3. **批量研究**：2 种模式
    - **多事件 × 目标市场** / **单事件 × 多子市场**
    - 聚合统计 + 标签 × 策略收益热力图 + 逐条明细 DataTable
-4. **实验保存/加载**：`ExperimentConfig` 序列化为 JSON
 
 ### 扩展方式
 
@@ -279,17 +265,17 @@ cache_backtest_result          监听 global-params；_trigger='run' 时才跑
     ↓
 backtest-result-store          结果存 store
     ↓
-render_tab_content             4 个 tab 从 store 读
+render_tab_content             按 active tab 从 store 读，懒渲染（只渲染当前 tab）
 ```
 
 ### 4 个 Tab
 
-| Tab | 内容 |
-|------|------|
-| 🔍 信号预览 | 价格 + 推文 + 信号点 / 估算总量 vs 实际累计推文 |
-| 📊 绩效概览 | 资金曲线（含买卖点）+ 核心绩效 8 卡片 + 盈亏细节 5 卡片 |
-| 📋 交易明细 | DataTable（排序 / 分页 / 导出）+ 外置筛选 |
-| 📈 策略评估 | 多窗口准确率 + 策略 vs 基线 + 交易分布直方图 + 持仓周期分桶 |
+| Tab | 内容 | 数据来源 |
+|------|------|----------|
+| 🔍 信号预览 | 价格 + 推文 + 信号点 / 估算总量 vs 实际累计推文 | 实时生成（params → generator） |
+| 📊 绩效概览 | 资金曲线（含买卖点）+ 核心绩效 8 卡片 + 盈亏细节 5 卡片 | backtest-result-store |
+| 📋 交易明细 | DataTable（排序 / 分页 / 导出）+ 外置筛选 | backtest-result-store |
+| 📈 策略评估 | 多窗口准确率 + 策略 vs 基线 + 交易分布直方图 + 持仓周期分桶 | store + params |
 
 ### 参数面板
 
@@ -334,53 +320,78 @@ line=dict(color=COLOR_PRIMARY)
 
 ---
 
-## 🗺️ 待办清单
+## 🗺️ 整改路线图
 
-编号体系：P0（明显错误）、P1（体验/一致性）、P2（可延后）、P3（远期）。
+> 2026-10-14 整体审计后重构。编号：C=跨页/闭环、F=金融逻辑、S=结构债、E=功能增强，前缀数字代表批次。
 
-### P0（已完成 ✅）
+### 已完成 ✅
 
-HM-3（首页缺策略研究入口）、HM-2（最后更新假数据）、PT-4（过滤条件文案不符）、PT-1（"共5个市场"写死）、IN-9（除零）、IN-8（裸 except）
-
-### P1 —— 部分完成
-
-| 编号 | 状态 |
+| 编号 | 内容 |
 |------|------|
-| PT-2 X 轴时间格式 | ✅ 完成（统一 `MM-DD`） |
-| PT-5 图例位置统一 | ✅ 完成 |
-| IN-5 insights 卡片样式统一 | ✅ 完成 |
-| HM-1 首页 KPI 响应 series | ✅ 完成 |
-| IN-3 说明块抽组件 | ✅ 完成（`info_block` + CSS 类） |
-| IN-7 `update_tweet_explorer` 拆分 | ✅ 完成（拆出 `_resolve_range` + `_compute_stats` 纯函数；顺带删死代码、`get_event_time_range` 查询 2→1） |
-| **R4** 策略类型扩展 | 🔲 待做 |
-| T1 回调风格统一 | ✅ 完成（全仓统一 `@callback` 自动注册，删 `register_callbacks` 手动链） |
-| **T2** Tab 用 `dcc.Tabs` children 机制 | 🔲 待做 |
-| **B3** 参数面板统一到 schema（research 侧） | 🔲 待做 |
+| P0 六项 | HM-3 / HM-2 / PT-4 / PT-1 / IN-9 / IN-8 |
+| P1 前六项 | PT-2 X轴时间 / PT-5 图例位置 / IN-5 卡片统一 / HM-1 KPI响应series / IN-3 说明块抽组件 |
+| IN-7 | `update_tweet_explorer` 拆出 `_resolve_range` + `_compute_stats` 纯函数 |
+| T1 | 全仓回调统一 `@callback` 自动注册，删 `register_callbacks` 手动链 |
+| T2 | insights/research Tab 改用 `dcc.Tab` children 机制，删 style-toggle 回调 |
 
-### P2 —— 可延后
+### 第一批：核心闭环 + 高风险 🔴
 
-| 编号 | 问题 |
-|------|------|
+| 编号 | 问题 | 修法 |
+|------|------|------|
+| **C1** | 跨页带参失效：研究→回测的参数传递断链（Dash 级联竞态 + 回测页不自动填充） | 拆两段回调 + 回测页加"检测外部参数→自动填充+运行" |
+| **F1** | Sharpe 年化因子不对：`sqrt(252*24)≈77.8` 按 252 天×24 小时年化，但事件只有 7 天 / 48 小时，Sharpe 虚高 | 改为不年化或按实际数据跨度算 |
+| **S4** | `equity_curve` 存 pandas Timestamp，`dcc.Store` JSON 序列化可能静默失败 | `cache_backtest_result` 里 Timestamp → ISO 字符串 |
+
+### 第二批：一致性 + 指标补全 🟡
+
+| 编号 | 问题 | 修法 |
+|------|------|------|
+| **S1** | metrics 两套实现：`BacktestEngine._calculate_metrics` vs `calculator.py`，Sharpe 口径不同 | 统一到 `calculator.py`，engine 只调它 |
+| **F3** | 方向准确率不看幅度：价格涨 0.001 跟涨 0.05 都算"正确" | 加加权准确率或平均幅度 |
+| **E3** | 策略对比曲线/散点重合时不可见 | 重合检测 + 提示 |
+| **E1** | 缺 Sortino / Calmar / Exposure 指标 | `calculator.py` 补算 |
+| **F4** | explorer 三个"平均"口径不一致（旧 IN-13） | 统一口径或标注统计范围 |
+| **F2** | 无交易成本/滑点，回测收益偏乐观 | 至少 UI 标注；可选加费率参数 |
+
+### 第三批：清理 + 功能扩展 🟢
+
+| 编号 | 问题 | 修法 |
+|------|------|------|
+| **S2** | `insights-store` 死代码（旧 IN-1） | 删 |
+| **S3** | `save_params` 新旧 ctx 风格混用 | 统一 `ctx.triggered_id` |
+| **S5** | `backtest/callbacks.py` 残留 `import dash` | 换 `from dash import ctx` |
+| **S6** | 信号生成器状态是实例变量（旧 T3），`_determine_signal` 里 prev_distance 冗余更新 | 改局部变量或 dataclass |
+| **E4** | 只有 direction_signal 一种策略，buy_hold/reverse_signal 注释掉了（旧 T4+R4） | 实现 buy_hold 基线，评价信号 alpha |
+| **B3** | research 参数面板未统一到 schema | 迁移 |
+| **F5** | 动量修正是递归累积，代码注释说"设计意图" | 确认是否合理，加开关 |
+| **F6** | 命中阈值 0.99 硬编码（旧 IN-4 同类） | 参数化 |
+
+### 保留项（旧 P2/P3 未重新编号）
+
+| 旧编号 | 问题 |
+|--------|------|
 | PT-6 | `price_tweet_analysis` 加"导出当前数据"按钮 |
 | PT-3 | `update_chart` 重复调用 `get_markets_by_event` |
 | PT-7 | "±2" 硬编码，改为控件 |
-| IN-1 | `insights-store` 死代码 |
-| IN-4 | "最多 30 个事件"硬编码 |
 | IN-6 | insights 回调没 `prevent_initial_call` |
 | IN-10 | 冗余 `if not df.empty` 检查 |
 | IN-11 | `go.Table` 高度硬算 |
 | IN-12 | explorer 3 个回调分散 |
 | HM-4 | 首页 KPI 在 layout 阶段查库 |
-| T3 | `generator.py` 状态管理重构 |
-| T4 | `baseline.random_signal` 公平性 |
 | T7 | 研究面板懒加载 |
 | T5b | 敏感性/网格分析提速 |
-| E1 | 多事件聚合统计 |
-| IN-13 | explorer「平均」口径不一致：卡片「平均/小时」为全量均值，「总推文」与 Total 行 Avg 为统计期过滤口径，待统一 |
+| R6 / R7 | 服务器端存储 / 多用户（远期） |
+| E2 / E3-old / E4-old | 参数寻优 / 实时数据 / 信号导出（远期） |
 
-### P3 —— 远期
+---
 
-C1（跨页带参，挂起）、R6（服务器端存储）、R7（多用户）、E2（参数寻优）、E3（实时数据）、E4（信号导出）
+## ⚠️ 已知问题
+
+| 问题 | 影响 | 状态 |
+|------|------|------|
+| C1 跨页带参 | 策略对比表"→ 信号回测"按钮点击后参数未正确带入回测页 | 第一批待修 |
+| `research-params-store` State 跨页告警 | 在 /backtest 页时 console 出现 nonexistent object 警告 | 无害（suppress_callback_exceptions 未完全吞 State 校验），不影响功能 |
+| Sharpe 年化虚高 | 7 天回测算出 Sharpe 5+ 是年化因子膨胀所致 | 第一批待修 |
 
 ---
 
@@ -395,9 +406,9 @@ C1（跨页带参，挂起）、R6（服务器端存储）、R7（多用户）�
 
 ## 📌 版本状态
 
-- **稳定可用**：观察层（`/analysis`、`/insights`）、回测模块、策略研究三 Tab、实验保存/加载
-- **已知失效**：跨页带参（C1，按钮保留但无效）
-- **重构重点**：观察层渐进式迁移到 CSS 设计系统；research 侧待迁移到 schema 驱动
+- **稳定可用**：观察层（`/`、`/analysis`、`/insights`）、回测模块、策略研究三 Tab
+- **已知失效**：跨页带参 C1（按钮保留但无效，第一批待修）
+- **审计发现**：Sharpe 年化虚高、metrics 两套实现、equity_curve 序列化风险（详见整改路线图）
 
 ---
 
