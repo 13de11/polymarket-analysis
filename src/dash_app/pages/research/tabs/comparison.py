@@ -28,6 +28,7 @@ from src.dash_app.state.global_params import (
     merge as _gp_merge,
     window_type_to_engine as _wt2e,
 )
+from src.dash_app.pages.shared.params_panel import create_shared_panel
 
 
 STRATEGY_COLORS = {'a': '#3498db', 'b': '#e74c3c', 'c': '#2ecc71'}
@@ -134,7 +135,7 @@ def _create_strategy_card(idx_lower, default_name):
             style={'fontSize': '12px', 'marginBottom': '8px'},
         ),
 
-        html.Label('参数覆盖（不勾则用左侧基础值）', style={
+        html.Label('参数覆盖（不勾则用上方基础值）', style={
             'fontSize': '11px', 'color': '#6c757d',
             'display': 'block', 'marginBottom': '4px',
         }),
@@ -148,15 +149,16 @@ def _create_strategy_card(idx_lower, default_name):
     })
 
 
-def render_comparison_tab():
+def render_comparison_tab(global_params=None, series='7d'):
     return html.Div([
+        # ---- 配置区（cmp-* 前缀，本 tab 自包含） ----
+        create_shared_panel(global_params=global_params, series=series,
+                            prefix='cmp'),
+        dcc.Store(id='cmp-params-store', data={}),
+        dcc.Store(id='cmp-market-options-store', data=[]),
+
+        # ---- 策略卡片 + 运行按钮 ----
         html.Div([
-            html.P(
-                "每个策略 = 左侧基础参数 + 卡片中勾选的覆盖项。"
-                "至少启用 2 个策略才能看出对比。",
-                style={'fontSize': '13px', 'color': '#495057',
-                       'marginBottom': '10px'},
-            ),
             html.Div([
                 _create_strategy_card('a', '策略A'),
                 _create_strategy_card('b', '策略B'),
@@ -179,7 +181,7 @@ def render_comparison_tab():
                                    'marginLeft': '6px'}),
             ]),
         ], style={'padding': '15px', 'backgroundColor': '#f8f9fa',
-                  'borderRadius': '8px'}),
+                  'borderRadius': '8px', 'marginTop': '15px'}),
 
         dcc.Loading(
             id='research-comparison-loading',
@@ -275,7 +277,7 @@ for _idx in ['a', 'b', 'c']:
     Output('research-comparison-results', 'children'),
     Output('research-comparison-results-store', 'data'),
     Input('research-comparison-run-btn', 'n_clicks'),
-    State('research-params-store', 'data'),
+    State('cmp-params-store', 'data'),
     State('series-selector', 'value'),
     State('research-strategy-a-store', 'data'),
     State('research-strategy-b-store', 'data'),
@@ -286,7 +288,7 @@ def run_research_comparison(n_clicks, params, series, sa, sb, sc):
     if not n_clicks:
         return no_update, no_update
     if not params or not params.get('market_id'):
-        return _warn("请先在左侧选择事件和市场"), None
+        return _warn("请先在上方配置区选择事件和市场"), None
 
     configs = []
     for il, sd in [('a', sa), ('b', sb), ('c', sc)]:
@@ -556,7 +558,7 @@ def export_comparison(n_metrics, n_trades, store_data):
 @callback(
     Output('global-params', 'data', allow_duplicate=True),
     Input({'type': 'research-import-btn', 'index': ALL}, 'n_clicks'),
-    State('research-params-store', 'data'),
+    State('cmp-params-store', 'data'),
     State('research-strategy-a-store', 'data'),
     State('research-strategy-b-store', 'data'),
     State('research-strategy-c-store', 'data'),

@@ -73,16 +73,18 @@ def update_markets(event_id, pathname, global_params):
 @callback(
     Output('param-event-selector', 'options'),
     Output('param-event-selector', 'value'),
+    Output('cmp-event-selector', 'options'),
+    Output('cmp-event-selector', 'value'),
     Input('series-selector', 'value'),
     Input('url', 'pathname'),
     Input('global-params', 'data'),
 )
 def update_events_on_series_change(series, pathname, global_params):
     if pathname not in ('/backtest', '/research'):
-        return no_update, no_update
+        return no_update, no_update, no_update, no_update
     events_df = get_elon_tweet_events(series)
     if events_df.empty:
-        return [], None
+        return [], None, [], None
     event_ids = events_df['id'].tolist()
     targets_map = get_target_markets_batch(event_ids)
     event_options = []
@@ -105,7 +107,7 @@ def update_events_on_series_change(series, pathname, global_params):
             target_event = eid
     if target_event is None:
         target_event = events_df.iloc[-1]['id']
-    return event_options, target_event
+    return event_options, target_event, event_options, target_event
 
 
 @callback(

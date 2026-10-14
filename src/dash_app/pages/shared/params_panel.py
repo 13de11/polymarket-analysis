@@ -132,11 +132,12 @@ def create_schema_section(prefix: str, group: str,
 
 # ==================== 共享参数面板（param-* 前缀） ====================
 
-def create_shared_panel(global_params=None, series='7d'):
+def create_shared_panel(global_params=None, series='7d', prefix='param'):
     """
-    创建共享参数面板（统一 param-* 前缀）
+    创建共享参数面板（默认 param-* 前缀）
 
-    /backtest 和 /research 两个页面复用。
+    /backtest 用 prefix='param'；/research 的 comparison tab 用 prefix='cmp'
+    实现自包含配置区——每个页面/tab 用自己的前缀，组件 ID 不冲突。
     事件/市场下拉从 data_loader 填充；schema 参数从 PARAM_SCHEMA 生成。
     页面自行添加按钮和页面特有组件（如 research 的策略卡片）。
 
@@ -214,7 +215,7 @@ def create_shared_panel(global_params=None, series='7d'):
                 html.Div([
                     html.Label("事件:", style={'fontWeight': 'bold', 'fontSize': '13px'}),
                     dcc.Dropdown(
-                        id='param-event-selector',
+                        id=f'{prefix}-event-selector',
                         options=event_options,
                         value=default_event,
                         placeholder='请选择事件',
@@ -226,7 +227,7 @@ def create_shared_panel(global_params=None, series='7d'):
                 html.Div([
                     html.Label("目标市场:", style={'fontWeight': 'bold', 'fontSize': '13px'}),
                     dcc.Dropdown(
-                        id='param-market-selector',
+                        id=f'{prefix}-market-selector',
                         options=[],
                         placeholder='请先选择事件',
                         style={'width': '100%', 'marginTop': '3px'},
@@ -242,12 +243,12 @@ def create_shared_panel(global_params=None, series='7d'):
             html.Summary("🎚️ 观察维度",
                          style={'fontWeight': 'bold', 'fontSize': '14px', 'cursor': 'pointer'}),
             create_schema_section(
-                'param', 'dimension',
+                prefix, 'dimension',
                 overrides=overrides,
                 extra_children=[
                     html.Div([
                         dcc.Input(
-                            id='param-window-custom',
+                            id=f'{prefix}-window-custom',
                             type='text',
                             value=custom_hours,
                             placeholder='自定义小时数',
@@ -255,7 +256,7 @@ def create_shared_panel(global_params=None, series='7d'):
                         ),
                         html.Span(" 小时",
                                   style={'fontSize': '12px', 'color': '#7f8c8d', 'marginLeft': '4px'}),
-                    ], id='param-window-custom-container',
+                    ], id=f'{prefix}-window-custom-container',
                        style={'marginTop': '4px', 'display': 'none'}),
                 ],
             ),
@@ -265,7 +266,7 @@ def create_shared_panel(global_params=None, series='7d'):
         html.Details([
             html.Summary("🧠 信号参数",
                          style={'fontWeight': 'bold', 'fontSize': '14px', 'cursor': 'pointer'}),
-            create_schema_section('param', 'signal', overrides=overrides),
+            create_schema_section(prefix, 'signal', overrides=overrides),
         ], style={'marginBottom': '12px'}),
 
         # ---- 评价假设 ----
@@ -273,12 +274,12 @@ def create_shared_panel(global_params=None, series='7d'):
             html.Summary("💰 评价假设",
                          style={'fontWeight': 'bold', 'fontSize': '14px', 'cursor': 'pointer'}),
             create_schema_section(
-                'param', 'execution',
+                prefix, 'execution',
                 overrides=overrides,
                 extra_children=[
                     html.Div([
                         dcc.RangeSlider(
-                            id='param-range-custom',
+                            id=f'{prefix}-range-custom',
                             min=0, max=100, step=5,
                             value=range_custom,
                             marks={0: '0%', 25: '25%', 50: '50%',
@@ -287,7 +288,7 @@ def create_shared_panel(global_params=None, series='7d'):
                         ),
                         html.Div("按事件时长百分比选择回测时段",
                                  style={'fontSize': '11px', 'color': '#7f8c8d', 'marginTop': '2px'}),
-                    ], id='param-range-custom-container',
+                    ], id=f'{prefix}-range-custom-container',
                        style={'display': 'none', 'marginTop': '8px'}),
                 ],
             ),
