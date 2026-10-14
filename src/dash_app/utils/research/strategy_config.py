@@ -19,9 +19,11 @@ STRATEGY_REGISTRY = {
         'description': '基于推文速率估算与市场价格距离的方向判断（当前主力策略）',
         # 该策略允许被覆盖的参数
         'param_keys': [
-            'window_type',  # 策略级窗口（7d / gamestart / open）
+            'price_type',     # 观察维度
+            'window_type',    # 策略级窗口（7d / gamestart / open）
             'capacity', 'price_threshold', 'distance_threshold',
             'inertia', 'momentum_enable', 'momentum_coef',
+            'signal_mode',    # 信号显示模式
         ],
     },
     # 下面这些是未来要实现的基线策略，先占位，用于前端下拉展示时能区分

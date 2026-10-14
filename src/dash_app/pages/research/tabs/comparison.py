@@ -28,10 +28,14 @@ from src.dash_app.state.global_params import (
     merge as _gp_merge,
     window_type_to_engine as _wt2e,
 )
-from src.dash_app.pages.shared.params_panel import create_shared_panel
+from src.dash_app.pages.shared.params_panel import (
+    create_shared_panel, create_schema_section,
+)
+from src.dash_app.utils.data_loader import get_elon_tweet_events
 
 
 STRATEGY_COLORS = {'a': '#3498db', 'b': '#e74c3c', 'c': '#2ecc71'}
+# 每个策略的默认参数（dimension + signal 全集）
 DEFAULT_CARD_OVERRIDES = {
     'a': {'price_threshold': 0.005},
     'b': {'price_threshold': 0.010},
@@ -43,22 +47,15 @@ DEFAULT_ENABLED = {'a', 'b'}
 # ==================== UI ====================
 
 def _create_override_row(idx_lower, param_key):
+    """生成单个策略参数输入行（无勾选框，直接输入）"""
     schema = PARAM_SCHEMA[param_key]
     defaults = DEFAULT_CARD_OVERRIDES.get(idx_lower, {})
-    is_default = param_key in defaults
     default_val = defaults.get(param_key, schema['default'])
     base_id = f'strategy-{idx_lower}-{param_key}'
 
     row_children = [
-        dcc.Checklist(
-            id=f'{base_id}-enable',
-            options=[{'label': '', 'value': 'on'}],
-            value=['on'] if is_default else [],
-            style={'display': 'inline-block', 'width': '18px',
-                   'marginRight': '4px', 'verticalAlign': 'middle'},
-        ),
         html.Label(schema['label'], style={
-            'display': 'inline-block', 'width': '72px',
+            'display': 'inline-block', 'width': '90px',
             'fontSize': '11px', 'color': '#495057',
             'verticalAlign': 'middle',
         }),
@@ -97,7 +94,7 @@ def _create_override_row(idx_lower, param_key):
         ))
 
     return html.Div(row_children, id=f'{base_id}-row',
-                    style={'marginBottom': '2px', 'lineHeight': '1.7'})
+                    style={'marginBottom': '4px', 'lineHeight': '1.7'})
 
 
 def _create_strategy_card(idx_lower, default_name):
@@ -135,7 +132,7 @@ def _create_strategy_card(idx_lower, default_name):
             style={'fontSize': '12px', 'marginBottom': '8px'},
         ),
 
-        html.Label('参数覆盖（不勾则用上方基础值）', style={
+        html.Label('策略参数（观察维度 + 信号参数）', style={
             'fontSize': '11px', 'color': '#6c757d',
             'display': 'block', 'marginBottom': '4px',
         }),
@@ -150,10 +147,66 @@ def _create_strategy_card(idx_lower, default_name):
 
 
 def render_comparison_tab(global_params=None, series='7d'):
+    """策略对比 tab：顶部共用配置（事件/市场/交易设置）+ 策略卡片"""
+    overrides = global_params or {}
+    range_custom = list(overrides.get('backtest_range_custom') or [0, 100])
+
     return html.Div([
-        # ---- 配置区（cmp-* 前缀，本 tab 自包含） ----
-        create_shared_panel(global_params=global_params, series=series,
-                            prefix='cmp'),
+        # ---- 顶部共用配置区 ----
+        html.Div([
+            # 事件 + 市场（横排）
+            html.Div([
+                html.Label("事件:", style={'fontWeight': 'bold',
+                                           'fontSize': '13px',
+                                           'marginRight': '8px'}),
+                dcc.Dropdown(
+                    id='cmp-event-selector', options=[], placeholder='选择事件',
+                    style={'width': '300px', 'display': 'inline-block',
+                           'fontSize': '12px'},
+                ),
+                html.Label("目标市场:", style={'fontWeight': 'bold',
+                                               'fontSize': '13px',
+                                               'marginLeft': '15px',
+                                               'marginRight': '8px'}),
+                dcc.Dropdown(
+                    id='cmp-market-selector', options=[], placeholder='选择市场',
+                    style={'width': '200px', 'display': 'inline-block',
+                           'fontSize': '12px'},
+                ),
+            ], style={'display': 'flex', 'alignItems': 'center',
+                      'gap': '4px', 'marginBottom': '12px'}),
+
+            # 交易设置折叠区（execution 组）
+            html.Details([
+                html.Summary("💰 交易设置",
+                             style={'fontWeight': 'bold', 'fontSize': '14px',
+                                    'cursor': 'pointer'}),
+                create_schema_section(
+                    'cmp', 'execution',
+                    overrides=overrides,
+                    extra_children=[
+                        html.Div([
+                            dcc.RangeSlider(
+                                id='cmp-range-custom',
+                                min=0, max=100, step=5,
+                                value=range_custom,
+                                marks={0: '0%', 25: '25%', 50: '50%',
+                                       75: '75%', 100: '100%'},
+                                tooltip={'placement': 'bottom',
+                                         'always_visible': False},
+                            ),
+                            html.Div("按事件时长百分比选择回测时段",
+                                     style={'fontSize': '11px',
+                                            'color': '#7f8c8d',
+                                            'marginTop': '2px'}),
+                        ], id='cmp-range-custom-container',
+                           style={'display': 'none', 'marginTop': '8px'}),
+                    ],
+                ),
+            ], open=True),
+        ], style={'padding': '15px', 'backgroundColor': '#f8f9fa',
+                  'borderRadius': '8px', 'marginBottom': '15px'}),
+
         dcc.Store(id='cmp-params-store', data={}),
         dcc.Store(id='cmp-market-options-store', data=[]),
 
@@ -181,7 +234,7 @@ def render_comparison_tab(global_params=None, series='7d'):
                                    'marginLeft': '6px'}),
             ]),
         ], style={'padding': '15px', 'backgroundColor': '#f8f9fa',
-                  'borderRadius': '8px', 'marginTop': '15px'}),
+                  'borderRadius': '8px'}),
 
         dcc.Loading(
             id='research-comparison-loading',
@@ -206,6 +259,8 @@ def _btn_style(color):
 # ==================== 卡片同步 ====================
 
 def _register_card_sync(idx_lower):
+    """收集策略卡片的全部参数值 → research-strategy-{idx}-store。
+    无勾选框，参数直接收集（按策略类型过滤不支持的参数行已由 visibility 控制）"""
     prefix = f'strategy-{idx_lower}'
     store_id = f'research-strategy-{idx_lower}-store'
     all_params = get_all_override_param_keys()
@@ -216,7 +271,6 @@ def _register_card_sync(idx_lower):
         Input(f'{prefix}-type', 'value'),
     ]
     for p in all_params:
-        inputs.append(Input(f'{prefix}-{p}-enable', 'value'))
         inputs.append(Input(f'{prefix}-{p}-value', 'value'))
 
     def _make_fn():
@@ -228,9 +282,8 @@ def _register_card_sync(idx_lower):
             allowed = set(get_strategy_param_keys(stype))
             params = {}
             for i, p in enumerate(all_params):
-                en = rest[i * 2]
-                val = rest[i * 2 + 1]
-                if en and p in allowed and val is not None:
+                val = rest[i]
+                if p in allowed and val is not None:
                     params[p] = val
             return {
                 'enabled': bool(enabled),
