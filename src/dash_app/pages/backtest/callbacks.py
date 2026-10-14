@@ -1,11 +1,11 @@
-# src/dash_app/pages/backtest/callbacks.py
 """
-预测回测系统 - 所有回调
+分析工作台 - 所有回调
 
-Phase 2：参数组件 ID 统一为 param-* 前缀（与共享面板一致）。
-按钮合并为一个 param-run-btn，删掉 preview 按钮 + _trigger 逻辑。
+Phase B：配置区移入 tab 内容（render_tab_content 动态生成）。
+backtest tab 顶部放完整共享面板 + 运行按钮；
+research tab 顶部放紧凑事件/市场行。
+tab 切换时 update_markets/events 靠 Input('backtest-tabs') 重新触发。
 """
-
 from dash import (html, Input, Output, State, callback, no_update)
 import pandas as pd
 
@@ -24,16 +24,20 @@ from src.dash_app.pages.backtest.tabs.evaluation import render_evaluation
 from src.dash_app.pages.research.tabs.comparison import render_comparison_tab
 from src.dash_app.pages.research.tabs.sensitivity import render_sensitivity_tab
 from src.dash_app.pages.research.tabs.batch import render_batch_tab
+from src.dash_app.pages.shared.params_panel import (
+    create_shared_panel, render_event_market_row,
+)
 
 
-# ==================== 参数面板联动 ====================
+# ==================== 面板联动（tab 切换时也要触发） ====================
 
 @callback(
     Output('param-range-custom-container', 'style'),
     Input('param-range', 'value'),
     Input('url', 'pathname'),
+    Input('backtest-tabs', 'value'),
 )
-def toggle_custom_range(range_type, pathname):
+def toggle_custom_range(range_type, pathname, _tab):
     if pathname not in ('/backtest', '/research'):
         return no_update
     if range_type == 'custom':
@@ -47,8 +51,9 @@ def toggle_custom_range(range_type, pathname):
     Input('param-event-selector', 'value'),
     Input('url', 'pathname'),
     Input('global-params', 'data'),
+    Input('backtest-tabs', 'value'),
 )
-def update_markets(event_id, pathname, global_params):
+def update_markets(event_id, pathname, global_params, _tab):
     if pathname not in ('/backtest', '/research'):
         return no_update, no_update
     if not event_id:
@@ -64,7 +69,6 @@ def update_markets(event_id, pathname, global_params):
         else:
             label = f"{r_start}-{int(row['range_end'])}"
         options.append({'label': label, 'value': row['id']})
-
     target_id = None
     if global_params and global_params.get('market_id'):
         mid = global_params['market_id']
@@ -82,8 +86,9 @@ def update_markets(event_id, pathname, global_params):
     Input('series-selector', 'value'),
     Input('url', 'pathname'),
     Input('global-params', 'data'),
+    Input('backtest-tabs', 'value'),
 )
-def update_events_on_series_change(series, pathname, global_params):
+def update_events_on_series_change(series, pathname, global_params, _tab):
     if pathname not in ('/backtest', '/research'):
         return no_update, no_update
     events_df = get_elon_tweet_events(series)
@@ -104,7 +109,6 @@ def update_events_on_series_change(series, pathname, global_params):
         else:
             label = row['slug']
         event_options.append({'label': label, 'value': row['id']})
-
     target_event = None
     if global_params and global_params.get('event_id'):
         eid = global_params['event_id']
@@ -145,7 +149,6 @@ def save_params(n_clicks, event_id, market_id,
                 backtest_range, backtest_range_custom):
     if not n_clicks:
         return no_update
-
     if window_type == '7d':
         window_mode, window_param, window_start = 'rolling', 168, None
     elif window_type == 'gamestart':
@@ -156,15 +159,11 @@ def save_params(n_clicks, event_id, market_id,
         window_mode = 'rolling'
         window_param = safe_int(window_custom, default=168, min_val=1)
         window_start = None
-
     return {
-        'event_id': event_id,
-        'market_id': market_id,
+        'event_id': event_id, 'market_id': market_id,
         'price_type': price_type or 'price_last',
-        'window_type': window_type,
-        'window_mode': window_mode,
-        'window_param': window_param,
-        'window_start': window_start,
+        'window_type': window_type, 'window_mode': window_mode,
+        'window_param': window_param, 'window_start': window_start,
         'capacity': capacity or 0,
         'price_threshold': price_threshold or 0.005,
         'distance_threshold': distance_threshold or 1.5,
@@ -172,11 +171,9 @@ def save_params(n_clicks, event_id, market_id,
         'momentum_enable': momentum_enable,
         'momentum_coef': momentum_coef or 0.10,
         'signal_mode': signal_mode or 'start',
-        'initial_capital': safe_float(initial_capital, default=100.0,
-                                      min_val=1.0),
+        'initial_capital': safe_float(initial_capital, default=100.0, min_val=1.0),
         'position_mode': position_mode or 'fixed_amount',
-        'position_size': safe_float(position_size, default=10.0,
-                                    min_val=0.01),
+        'position_size': safe_float(position_size, default=10.0, min_val=0.01),
         'backtest_range': backtest_range or 'full',
         'backtest_range_custom': backtest_range_custom or [0, 100],
     }
@@ -185,8 +182,9 @@ def save_params(n_clicks, event_id, market_id,
 @callback(
     Output('param-window-custom-container', 'style'),
     Input('param-window-type', 'value'),
+    Input('backtest-tabs', 'value'),
 )
-def toggle_custom_window(window_type):
+def toggle_custom_window(window_type, _tab):
     if window_type == 'custom':
         return {'marginTop': '4px'}
     return {'marginTop': '4px', 'display': 'none'}
@@ -200,7 +198,6 @@ def toggle_custom_window(window_type):
     prevent_initial_call=True,
 )
 def cache_backtest_result(params):
-    """监听 global-params，有 market_id 就跑回测（按钮合并后不再区分 trigger）。"""
     if not params or not params.get('market_id'):
         return {'error': '未选择事件或市场'}
     result = run_backtest(params)
@@ -214,13 +211,27 @@ def cache_backtest_result(params):
     }
 
 
-# ==================== Tab 内容分发 ====================
+# ==================== Tab 内容分发（配置区 + 结果） ====================
 
 def _placeholder(msg):
     return html.Div(msg, style={
-        'color': '#6c757d', 'textAlign': 'center',
-        'padding': '40px 0',
+        'color': '#6c757d', 'textAlign': 'center', 'padding': '40px 0',
     })
+
+
+def _backtest_config(params):
+    """backtest tab 顶部的配置区：共享面板 + 运行按钮"""
+    return html.Div([
+        create_shared_panel(global_params=params),
+        html.Div([
+            html.Button('🚀 运行回测', id='param-run-btn', n_clicks=0, style={
+                'width': '100%', 'padding': '10px',
+                'backgroundColor': '#28a745', 'color': 'white',
+                'border': 'none', 'borderRadius': '6px',
+                'fontSize': '14px', 'fontWeight': 'bold', 'cursor': 'pointer',
+            }),
+        ], style={'display': 'flex', 'marginBottom': '10px'}),
+    ])
 
 
 @callback(
@@ -232,17 +243,23 @@ def _placeholder(msg):
     State('series-selector', 'value'),
 )
 def render_tab_content(tab_name, cached_result, params, series):
-    # ---- Research tabs：始终可访问（不依赖回测结果） ----
+    # ---- Research tabs：紧凑事件/市场行 + tab 专属内容 ----
     if tab_name == 'comparison':
-        return render_comparison_tab(), "🔬 策略对比"
+        return html.Div([render_event_market_row(params),
+                         render_comparison_tab()]), "🔬 策略对比"
     if tab_name == 'sensitivity':
-        return render_sensitivity_tab(), "📊 敏感性分析"
+        return html.Div([render_event_market_row(params),
+                         render_sensitivity_tab()]), "📊 敏感性分析"
     if tab_name == 'batch':
-        return render_batch_tab(), "📦 批量研究"
+        return html.Div([render_event_market_row(params),
+                         render_batch_tab()]), "📦 批量研究"
 
-    # ---- Backtest tabs：需要先选事件+市场 ----
+    # ---- Backtest tabs：完整配置面板 + 运行按钮 + 结果 ----
+    config = _backtest_config(params)
+
     if not params or not params.get('market_id'):
-        return _placeholder("请选择事件和市场，点击「运行回测」"), \
+        return html.Div([config,
+                         _placeholder("请选择事件和市场，点击「运行回测」")]), \
                "请选择事件和市场"
 
     series = series or '7d'
@@ -251,22 +268,24 @@ def render_tab_content(tab_name, cached_result, params, series):
         content, stats = render_preview_tab(params, series)
         n = stats.get('total_signals', 0)
         acc = stats.get('overall_accuracy', 0) * 100
-        return content, f"✅ 信号预览 | 信号总数: {n} | 方向准确率: {acc:.1f}%"
+        return html.Div([config, content]), \
+               f"✅ 信号预览 | 信号总数: {n} | 方向准确率: {acc:.1f}%"
 
     if cached_result and cached_result.get('error'):
-        err = cached_result['error']
-        return _placeholder(f"❌ {err}"), f"❌ {err}"
+        return html.Div([config, _placeholder(f"❌ {cached_result['error']}")]), \
+               f"❌ {cached_result['error']}"
 
     if not cached_result or not cached_result.get('metrics'):
-        return _placeholder("暂无回测结果，请点击「运行回测」"), \
+        return html.Div([config,
+                         _placeholder("暂无回测结果，请点击「运行回测」")]), \
                "暂无回测结果"
 
     if tab_name == 'overview':
-        return render_overview_tab(cached_result)
+        return html.Div([config, render_overview_tab(cached_result)]), "📊 绩效概览"
     if tab_name == 'trades':
-        return render_trades_tab(cached_result)
+        return html.Div([config, render_trades_tab(cached_result)]), "📋 交易明细"
     if tab_name == 'evaluation':
-        return render_evaluation(params, cached_result)
+        return html.Div([config, render_evaluation(params, cached_result)]), "📈 策略评估"
 
     return _placeholder("未知 Tab"), ""
 

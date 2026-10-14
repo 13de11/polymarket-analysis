@@ -298,3 +298,60 @@ def create_shared_panel(global_params=None, series='7d'):
         'backgroundColor': 'white', 'padding': '15px', 'borderRadius': '8px',
         'border': '1px solid #e9ecef', 'height': 'fit-content',
     })
+
+
+def render_event_market_row(global_params=None, series='7d'):
+    """
+    紧凑的事件+市场选择行（横向，供 research tab 顶部使用）
+
+    与 create_shared_panel 共用 param-event-selector / param-market-selector ID。
+    只包含事件+市场，不含信号参数（research tab 自带策略卡片/扫参等专属控件）。
+    """
+    events_df = get_elon_tweet_events(series)
+    event_ids = events_df['id'].tolist()
+    targets_map = get_target_markets_batch(event_ids)
+
+    event_options = []
+    for _, row in events_df.iterrows():
+        target = targets_map.get(row['id'])
+        if target:
+            r_start = int(target['range_start'])
+            r_end = (int(target['range_end'])
+                     if target['range_end']
+                     and not pd.isna(target['range_end'])
+                     else '∞')
+            label = f"{row['slug']} (命中: {r_start}-{r_end})"
+        else:
+            label = row['slug']
+        event_options.append({'label': label, 'value': row['id']})
+
+    default_event = None
+    if global_params and global_params.get('event_id') in event_ids:
+        default_event = global_params['event_id']
+    elif not events_df.empty:
+        default_event = events_df.iloc[-1]['id']
+
+    return html.Div([
+        html.Div([
+            html.Label("事件:", style={'fontWeight': 'bold', 'fontSize': '13px',
+                                        'marginRight': '8px'}),
+            dcc.Dropdown(
+                id='param-event-selector',
+                options=event_options,
+                value=default_event,
+                placeholder='选择事件',
+                style={'width': '300px', 'display': 'inline-block',
+                       'fontSize': '12px'},
+            ),
+            html.Label("市场:", style={'fontWeight': 'bold', 'fontSize': '13px',
+                                        'marginLeft': '15px', 'marginRight': '8px'}),
+            dcc.Dropdown(
+                id='param-market-selector',
+                options=[],
+                placeholder='选择市场',
+                style={'width': '200px', 'display': 'inline-block',
+                       'fontSize': '12px'},
+            ),
+        ], style={'display': 'flex', 'alignItems': 'center', 'gap': '4px'}),
+    ], style={'padding': '10px 15px', 'backgroundColor': '#f8f9fa',
+              'borderRadius': '6px', 'marginBottom': '10px'})
