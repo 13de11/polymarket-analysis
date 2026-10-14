@@ -1,5 +1,8 @@
 """
 策略研究 - 页面布局
+
+T2：Tab 内容内嵌为 dcc.Tab children，Dash 原生管显隐，
+    不再需要 switch_research_tab style-toggle 回调。
 """
 
 from dash import html, dcc
@@ -39,49 +42,22 @@ def layout():
                 dcc.Tabs(
                     id='research-tabs', value='comparison',
                     children=[
-                        dcc.Tab(label='📊 策略对比', value='comparison'),
-                        dcc.Tab(label='📊 敏感性分析', value='sensitivity'),
-                        dcc.Tab(label='📦 批量研究', value='batch'),
+                        dcc.Tab(label='📊 策略对比', value='comparison',
+                                children=render_comparison_tab()),
+                        dcc.Tab(label='📊 敏感性分析', value='sensitivity',
+                                children=render_sensitivity_tab()),
+                        dcc.Tab(label='📦 批量研究', value='batch',
+                                children=render_batch_tab()),
                     ],
                     style={'marginBottom': '15px'},
                 ),
-
-                html.Div([
-                    html.Div(render_comparison_tab(),
-                             id='research-tab-comparison',
-                             style={'display': 'block'}),
-                    html.Div(render_sensitivity_tab(),
-                             id='research-tab-sensitivity',
-                             style={'display': 'none'}),
-                    html.Div(render_batch_tab(),
-                             id='research-tab-batch',
-                             style={'display': 'none'}),
-                ], style={'minHeight': '400px'}),
 
             ], className='backtest-right', style={
                 'width': '70%',
                 'display': 'inline-block',
                 'verticalAlign': 'top',
-                'boxSizing': 'border-box'
+                'boxSizing': 'border-box',
+                'minHeight': '400px',
             }),
         ], style={'display': 'flex', 'flexWrap': 'wrap'}),
     ], style={'padding': '10px 20px'})
-
-from dash import callback, Output, Input
-
-@callback(
-    Output('research-tab-comparison', 'style'),
-    Output('research-tab-sensitivity', 'style'),
-    Output('research-tab-batch', 'style'),
-    Input('research-tabs', 'value'),
-)
-def switch_research_tab(tab):
-    hidden = {'display': 'none'}
-    shown = {'display': 'block'}
-    if tab == 'comparison':
-        return shown, hidden, hidden
-    if tab == 'sensitivity':
-        return hidden, shown, hidden
-    if tab == 'batch':
-        return hidden, hidden, shown
-    return shown, hidden, hidden
