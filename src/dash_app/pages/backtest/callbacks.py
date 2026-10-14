@@ -1,10 +1,9 @@
 """
 分析工作台 - 所有回调
 
-Phase B：配置区移入 tab 内容（render_tab_content 动态生成）。
-backtest tab 顶部放完整共享面板 + 运行按钮；
-research tab 顶部放紧凑事件/市场行。
-tab 切换时 update_markets/events 靠 Input('backtest-tabs') 重新触发。
+Phase B 修订：配置面板在 layout 的可折叠 Details 区（param-* 组件常驻）。
+backtest tab 显示只读摘要 + 结果；research tab 显示各自专属控件。
+联动回调无需 Input('backtest-tabs')——组件不随 tab 切换销毁。
 """
 from dash import (html, Input, Output, State, callback, no_update)
 import pandas as pd
@@ -24,20 +23,16 @@ from src.dash_app.pages.backtest.tabs.evaluation import render_evaluation
 from src.dash_app.pages.research.tabs.comparison import render_comparison_tab
 from src.dash_app.pages.research.tabs.sensitivity import render_sensitivity_tab
 from src.dash_app.pages.research.tabs.batch import render_batch_tab
-from src.dash_app.pages.shared.params_panel import (
-    create_shared_panel, render_event_market_row,
-)
 
 
-# ==================== 面板联动（tab 切换时也要触发） ====================
+# ==================== 面板联动（组件常驻，无需 tab 触发） ====================
 
 @callback(
     Output('param-range-custom-container', 'style'),
     Input('param-range', 'value'),
     Input('url', 'pathname'),
-    Input('backtest-tabs', 'value'),
 )
-def toggle_custom_range(range_type, pathname, _tab):
+def toggle_custom_range(range_type, pathname):
     if pathname not in ('/backtest', '/research'):
         return no_update
     if range_type == 'custom':
@@ -51,9 +46,8 @@ def toggle_custom_range(range_type, pathname, _tab):
     Input('param-event-selector', 'value'),
     Input('url', 'pathname'),
     Input('global-params', 'data'),
-    Input('backtest-tabs', 'value'),
 )
-def update_markets(event_id, pathname, global_params, _tab):
+def update_markets(event_id, pathname, global_params):
     if pathname not in ('/backtest', '/research'):
         return no_update, no_update
     if not event_id:
@@ -86,9 +80,8 @@ def update_markets(event_id, pathname, global_params, _tab):
     Input('series-selector', 'value'),
     Input('url', 'pathname'),
     Input('global-params', 'data'),
-    Input('backtest-tabs', 'value'),
 )
-def update_events_on_series_change(series, pathname, global_params, _tab):
+def update_events_on_series_change(series, pathname, global_params):
     if pathname not in ('/backtest', '/research'):
         return no_update, no_update
     events_df = get_elon_tweet_events(series)
@@ -182,9 +175,8 @@ def save_params(n_clicks, event_id, market_id,
 @callback(
     Output('param-window-custom-container', 'style'),
     Input('param-window-type', 'value'),
-    Input('backtest-tabs', 'value'),
 )
-def toggle_custom_window(window_type, _tab):
+def toggle_custom_window(window_type):
     if window_type == 'custom':
         return {'marginTop': '4px'}
     return {'marginTop': '4px', 'display': 'none'}
@@ -211,7 +203,7 @@ def cache_backtest_result(params):
     }
 
 
-# ==================== Tab 内容分发（配置区 + 结果） ====================
+# ==================== Tab 内容分发 ====================
 
 def _placeholder(msg):
     return html.Div(msg, style={
@@ -219,19 +211,28 @@ def _placeholder(msg):
     })
 
 
-def _backtest_config(params):
-    """backtest tab 顶部的配置区：共享面板 + 运行按钮"""
+def _render_params_summary(params):
+    """只读参数摘要条（backtest tab 顶部，显示当前回测配置一览）"""
+    if not params or not params.get('market_id'):
+        return html.Div(
+            "未配置 — 请在上方「参数配置」区选择事件和市场，点击「运行回测」",
+            style={'color': '#6c757d', 'fontSize': '12px', 'padding': '8px 12px',
+                   'backgroundColor': '#f8f9fa', 'borderRadius': '4px',
+                   'marginBottom': '10px'})
+    items = [
+        f"容差 {params.get('capacity', 0)}",
+        f"价格阈值 {params.get('price_threshold', 0.005)}",
+        f"距离阈值 {params.get('distance_threshold', 1.5)}",
+        f"惯性 {params.get('inertia', 6)}h",
+        f"动量 {params.get('momentum_coef', 0.10)}",
+        f"窗口 {params.get('window_type', '7d')}",
+        f"资金 ${params.get('initial_capital', 100)}",
+    ]
     return html.Div([
-        create_shared_panel(global_params=params),
-        html.Div([
-            html.Button('🚀 运行回测', id='param-run-btn', n_clicks=0, style={
-                'width': '100%', 'padding': '10px',
-                'backgroundColor': '#28a745', 'color': 'white',
-                'border': 'none', 'borderRadius': '6px',
-                'fontSize': '14px', 'fontWeight': 'bold', 'cursor': 'pointer',
-            }),
-        ], style={'display': 'flex', 'marginBottom': '10px'}),
-    ])
+        html.Strong("📋 本次配置: ", style={'fontSize': '12px'}),
+        html.Span(" | ".join(items), style={'color': '#495057', 'fontSize': '12px'}),
+    ], style={'padding': '8px 12px', 'backgroundColor': '#f8f9fa',
+              'borderRadius': '4px', 'marginBottom': '10px'})
 
 
 @callback(
@@ -243,23 +244,19 @@ def _backtest_config(params):
     State('series-selector', 'value'),
 )
 def render_tab_content(tab_name, cached_result, params, series):
-    # ---- Research tabs：紧凑事件/市场行 + tab 专属内容 ----
+    # ---- Research tabs：各自专属控件（事件/市场在上方配置区选） ----
     if tab_name == 'comparison':
-        return html.Div([render_event_market_row(params),
-                         render_comparison_tab()]), "🔬 策略对比"
+        return render_comparison_tab(), "🔬 策略对比（事件/市场请在上方配置区选择）"
     if tab_name == 'sensitivity':
-        return html.Div([render_event_market_row(params),
-                         render_sensitivity_tab()]), "📊 敏感性分析"
+        return render_sensitivity_tab(), "📊 敏感性分析（事件/市场请在上方配置区选择）"
     if tab_name == 'batch':
-        return html.Div([render_event_market_row(params),
-                         render_batch_tab()]), "📦 批量研究"
+        return render_batch_tab(), "📦 批量研究"
 
-    # ---- Backtest tabs：完整配置面板 + 运行按钮 + 结果 ----
-    config = _backtest_config(params)
+    # ---- Backtest tabs：只读摘要 + 结果 ----
+    summary = _render_params_summary(params)
 
     if not params or not params.get('market_id'):
-        return html.Div([config,
-                         _placeholder("请选择事件和市场，点击「运行回测」")]), \
+        return html.Div([summary, _placeholder("请点击上方「运行回测」")]), \
                "请选择事件和市场"
 
     series = series or '7d'
@@ -268,24 +265,23 @@ def render_tab_content(tab_name, cached_result, params, series):
         content, stats = render_preview_tab(params, series)
         n = stats.get('total_signals', 0)
         acc = stats.get('overall_accuracy', 0) * 100
-        return html.Div([config, content]), \
+        return html.Div([summary, content]), \
                f"✅ 信号预览 | 信号总数: {n} | 方向准确率: {acc:.1f}%"
 
     if cached_result and cached_result.get('error'):
-        return html.Div([config, _placeholder(f"❌ {cached_result['error']}")]), \
+        return html.Div([summary, _placeholder(f"❌ {cached_result['error']}")]), \
                f"❌ {cached_result['error']}"
 
     if not cached_result or not cached_result.get('metrics'):
-        return html.Div([config,
-                         _placeholder("暂无回测结果，请点击「运行回测」")]), \
+        return html.Div([summary, _placeholder("暂无回测结果，请点击上方「运行回测」")]), \
                "暂无回测结果"
 
     if tab_name == 'overview':
-        return html.Div([config, render_overview_tab(cached_result)]), "📊 绩效概览"
+        return html.Div([summary, render_overview_tab(cached_result)]), "📊 绩效概览"
     if tab_name == 'trades':
-        return html.Div([config, render_trades_tab(cached_result)]), "📋 交易明细"
+        return html.Div([summary, render_trades_tab(cached_result)]), "📋 交易明细"
     if tab_name == 'evaluation':
-        return html.Div([config, render_evaluation(params, cached_result)]), "📈 策略评估"
+        return html.Div([summary, render_evaluation(params, cached_result)]), "📈 策略评估"
 
     return _placeholder("未知 Tab"), ""
 
@@ -312,7 +308,7 @@ def render_tab_content(tab_name, cached_result, params, series):
     prevent_initial_call=True,
 )
 def sync_panel_from_import(params):
-    """C1: global-params 带 _pending_nav 时同步到面板组件。"""
+    """C1: global-params 带 _pending_nav 时同步到配置面板组件。"""
     if not params or not params.get('_pending_nav'):
         return tuple(no_update for _ in range(15))
     return (
