@@ -44,7 +44,7 @@ def toggle_custom_range(range_type, pathname):
     Output('backtest-market-selector', 'value'),
     Input('backtest-event-selector', 'value'),
     Input('url', 'pathname'),
-    State('global-params', 'data'),
+    Input('global-params', 'data'),
 )
 def update_markets(event_id, pathname, global_params):
     if pathname != '/backtest':
@@ -80,7 +80,7 @@ def update_markets(event_id, pathname, global_params):
     Output('backtest-event-selector', 'value'),
     Input('series-selector', 'value'),
     Input('url', 'pathname'),
-    State('global-params', 'data'),
+    Input('global-params', 'data'),
 )
 def update_backtest_events_on_series_change(series, pathname, global_params):
     if pathname != '/backtest':
@@ -271,3 +271,49 @@ def render_tab_content(tab_name, cached_result, preview_n, params, series):
         return render_evaluation(params, cached_result)
 
     return _placeholder("未知 Tab"), ""
+
+
+# ==================== 导入参数同步（C1） ====================
+
+@callback(
+    Output('backtest-price-type', 'value'),
+    Output('backtest-window-type', 'value'),
+    Output('backtest-window-custom', 'value'),
+    Output('backtest-capacity', 'value'),
+    Output('backtest-price-threshold', 'value'),
+    Output('backtest-distance-threshold', 'value'),
+    Output('backtest-inertia', 'value'),
+    Output('backtest-momentum-enable', 'value'),
+    Output('backtest-momentum-coef', 'value'),
+    Output('backtest-signal-mode', 'value'),
+    Output('backtest-initial-capital', 'value'),
+    Output('backtest-position-mode', 'value'),
+    Output('backtest-position-size', 'value'),
+    Output('backtest-range', 'value'),
+    Output('backtest-range-custom', 'value'),
+    Input('global-params', 'data'),
+    prevent_initial_call=True,
+)
+def sync_panel_from_import(params):
+    """C1: global-params 带 _pending_nav 时，把导入的参数同步到面板组件。
+    回调在 store 写入时（第一段）触发，值被 Dash 缓存，
+    面板渲染时覆写初始默认值——绕过 display_page 的 State 时序问题。"""
+    if not params or not params.get('_pending_nav'):
+        return tuple(no_update for _ in range(15))
+    return (
+        params.get('price_type') or 'price_last',
+        params.get('window_type') or '7d',
+        str(params.get('window_custom_hours') or ''),
+        params.get('capacity') if params.get('capacity') is not None else 0.5,
+        params.get('price_threshold') if params.get('price_threshold') is not None else 0.005,
+        params.get('distance_threshold') if params.get('distance_threshold') is not None else 1.5,
+        params.get('inertia') if params.get('inertia') is not None else 6,
+        params.get('momentum_enable') if params.get('momentum_enable') is not None else True,
+        params.get('momentum_coef') if params.get('momentum_coef') is not None else 0.10,
+        params.get('signal_mode') or 'start',
+        params.get('initial_capital') if params.get('initial_capital') is not None else 100.0,
+        params.get('position_mode') or 'fixed_amount',
+        params.get('position_size') if params.get('position_size') is not None else 10.0,
+        params.get('backtest_range') or 'full',
+        list(params.get('backtest_range_custom') or [0, 100]),
+    )

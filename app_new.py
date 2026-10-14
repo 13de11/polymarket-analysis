@@ -17,8 +17,8 @@ from src.dash_app.pages.backtest.layout import layout as backtest_layout
 from src.dash_app.pages.backtest import callbacks as _backtest_callbacks  # noqa: F401
 
 app.layout = html.Div([
-    dcc.Location(id='url'),
-    dcc.Store(id='global-params', data={}),
+    dcc.Location(id='url', refresh=True),
+    dcc.Store(id='global-params', data={}, storage_type='session'),
     html.Div([
 
         # ========== 左侧导航栏 ==========

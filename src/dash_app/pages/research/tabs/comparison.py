@@ -551,11 +551,10 @@ def export_comparison(n_metrics, n_trades, store_data):
                                index=False, encoding='utf-8-sig')
 
 
-# ==================== 跳转到信号回测 ====================
+# ==================== 跳转到信号回测（C1 修复：两段式避免级联竞态） ====================
 
 @callback(
     Output('global-params', 'data', allow_duplicate=True),
-    Output('url', 'pathname', allow_duplicate=True),
     Input({'type': 'research-import-btn', 'index': ALL}, 'n_clicks'),
     State('research-params-store', 'data'),
     State('research-strategy-a-store', 'data'),
@@ -566,15 +565,15 @@ def export_comparison(n_metrics, n_trades, store_data):
 )
 def import_strategy_to_backtest(clicks, research_params,
                                  sa, sb, sc, global_params):
-    """把策略对比表里某一行策略的参数带入信号回测"""
+    """第一阶段：把策略参数写入 global-params（带自动运行 + 延迟导航标记）"""
     if not any(c for c in (clicks or []) if c):
-        return no_update, no_update
+        return no_update
 
     triggered = ctx.triggered_id
     if not isinstance(triggered, dict):
-        return no_update, no_update
+        return no_update
     if triggered.get('type') != 'research-import-btn':
-        return no_update, no_update
+        return no_update
 
     strategy_name = triggered.get('index')
 
@@ -584,7 +583,7 @@ def import_strategy_to_backtest(clicks, research_params,
             target_strategy = sd
             break
     if not target_strategy:
-        return no_update, no_update
+        return no_update
 
     p = _gp_merge(global_params)
 
@@ -611,4 +610,20 @@ def import_strategy_to_backtest(clicks, research_params,
         if v is not None:
             p[k] = v
 
-    return p, '/backtest'
+    # C1 关键：_trigger='run' 让 cache_backtest_result 自动跑回测；
+    # _pending_nav 让第二段回调跳转页面。两段分开确保 display_page 读到新 store。
+    p['_trigger'] = 'run'
+    p['_pending_nav'] = '/backtest'
+    return p
+
+
+@callback(
+    Output('url', 'pathname', allow_duplicate=True),
+    Input('global-params', 'data'),
+    prevent_initial_call=True,
+)
+def navigate_after_import(params):
+    """第二阶段：global-params 写入后再跳转，确保 display_page 读到新值"""
+    if params and params.get('_pending_nav'):
+        return params['_pending_nav']
+    return no_update
