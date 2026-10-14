@@ -25,6 +25,7 @@ from src.dash_app.utils.research.params_schema import (
     is_lower_better,
 )
 from src.dash_app.utils.research.serialize import to_python
+from src.dash_app.pages.shared.params_panel import create_shared_panel
 
 
 def _param_options():
@@ -32,8 +33,13 @@ def _param_options():
             for k in get_tunable_params()]
 
 
-def render_sensitivity_tab():
+def render_sensitivity_tab(global_params=None, series='7d'):
     return html.Div([
+        # ---- sens-* 配置区（扫参基准）----
+        create_shared_panel(global_params=global_params, series=series,
+                            prefix='sens'),
+        dcc.Store(id='sens-params-store', data={}),
+
         html.Div([
             html.P("选择扫描模式和范围，运行分析。",
                    style={'fontSize': '13px', 'color': '#495057',
@@ -447,7 +453,7 @@ def _update_range_hint(mode, scope, p_single, m_single,
     Input('research-sensitivity-run-btn', 'n_clicks'),
     State('research-sensitivity-mode', 'value'),
     State('research-sensitivity-scope', 'value'),
-    State('research-params-store', 'data'),
+    State('sens-params-store', 'data'),
     State('research-sensitivity-param', 'value'),
     State('research-sensitivity-metric', 'value'),
     State('research-sensitivity-npoints', 'value'),
@@ -477,7 +483,7 @@ def run_research_sensitivity(
     if not n_clicks:
         return no_update, no_update
     if not params or not params.get('market_id'):
-        return _warn("请先在左侧选择事件和市场"), None
+        return _warn("请先在上方配置区选择事件和市场"), None
 
     series = series or '7d'
 
