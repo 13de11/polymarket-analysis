@@ -67,6 +67,15 @@ def render_overview_tab(cached_result):
             'display': 'flex', 'flexWrap': 'wrap', 'gap': '10px',
             'justifyContent': 'center',
         }),
+        html.Div([
+            html.Strong("⚠️ 口径提示：", style={'fontSize': '12px'}),
+            html.Span("回测假设信号点按当时价格即时全额成交，未计入滑点与交易成本"
+                      "（Polymarket 目前零手续费，但流动性差的市场实际成交价可能偏离信号价）。"
+                      "收益数字偏乐观——请重点看相对差异（策略对比、参数敏感性），"
+                      "不要把绝对收益当真实预期。",
+                      style={'fontSize': '12px', 'color': '#856404'}),
+        ], style={'padding': '8px 12px', 'backgroundColor': '#fff3cd',
+                  'borderRadius': '6px', 'marginTop': '20px', 'lineHeight': '1.6'}),
     ])
 
     status = (f"✅ 回测完成 | 总交易: {metrics.get('total_trades', 0)} | "

@@ -440,6 +440,69 @@ def _results_to_store(results):
     return {'strategies': strategies}
 
 
+# ==================== E3: 重合检测 ====================
+
+def _nearly_same_seq(a, b, tol_ratio=0.98):
+    """判断两条数值序列是否几乎相同（长度差<5% 且 相同点比例>=tol_ratio）"""
+    if not a or not b:
+        return False
+    if abs(len(a) - len(b)) > max(len(a), len(b)) * 0.05:
+        return False
+    n = min(len(a), len(b))
+    same = sum(1 for x, y in zip(a[:n], b[:n]) if x == y)
+    return n > 0 and same / n >= tol_ratio
+
+
+def _detect_curve_overlaps(results):
+    """两两比较资金曲线（equity 取 2 位小数），返回重合对列表 [(a, b), ...]"""
+    seqs = []
+    for name, r in results.items():
+        curve = r.get('equity_curve') or []
+        if not curve or not isinstance(curve[0], dict):
+            continue
+        ys = tuple(round(float(p.get('equity') or 0), 2) for p in curve)
+        seqs.append((name, ys))
+
+    pairs = []
+    for i in range(len(seqs)):
+        for j in range(i + 1, len(seqs)):
+            if _nearly_same_seq(seqs[i][1], seqs[j][1]):
+                pairs.append((seqs[i][0], seqs[j][0]))
+    return pairs
+
+
+def _detect_scatter_overlaps(results,
+                             dx_tol=0.05, dy_tol=0.05):
+    """两两比较 (total_return, sharpe)，返回在图上不可分辨的重合对"""
+    pts = []
+    for name, r in results.items():
+        m = r.get('metrics') or {}
+        x, y = m.get('total_return'), m.get('sharpe_ratio')
+        if x is None or y is None:
+            continue
+        pts.append((name, float(x), float(y)))
+
+    pairs = []
+    for i in range(len(pts)):
+        for j in range(i + 1, len(pts)):
+            if (abs(pts[i][1] - pts[j][1]) <= dx_tol
+                    and abs(pts[i][2] - pts[j][2]) <= dy_tol):
+                pairs.append((pts[i][0], pts[j][0]))
+    return pairs
+
+
+def _overlap_warn(pairs, what, note=''):
+    """重合提示条"""
+    who = '；'.join(f"「{a}」与「{b}」" for a, b in pairs)
+    return html.Div([
+        html.Strong(f"⚠️ {what}重合：", style={'fontSize': '12px'}),
+        html.Span(f"{who}的结果几乎一样。{note}",
+                  style={'fontSize': '12px', 'color': '#856404'}),
+    ], style={'padding': '8px 12px', 'backgroundColor': '#fff3cd',
+              'borderLeft': '4px solid #f0ad4e', 'borderRadius': '4px',
+              'marginTop': '8px', 'lineHeight': '1.6'})
+
+
 # ==================== 渲染 ====================
 
 def _render_results(results):
@@ -460,10 +523,22 @@ def _render_results(results):
         }))
 
     if oks:
+        # E3: 重合检测——先检测再渲染，提示条插在对应图上方
+        curve_overlaps = _detect_curve_overlaps(oks)
+        scatter_overlaps = _detect_scatter_overlaps(oks)
+        if curve_overlaps:
+            children.append(_overlap_warn(
+                curve_overlaps, '资金曲线',
+                '资金曲线图中后画的一条已改为虚线以便区分；'
+                '若非刻意，请检查两策略参数是否配成了同一个'))
         children.append(dcc.Graph(
             figure=_create_comparison_chart(oks),
             style={'height': '400px'},
         ))
+        if scatter_overlaps:
+            children.append(_overlap_warn(
+                scatter_overlaps, '收益/夏普散点',
+                '散点图中两点重叠在一起，鼠标悬停可分别查看'))
         children.append(dcc.Graph(
             figure=_create_metric_scatter(oks),
             style={'height': '380px', 'marginTop': '10px'},
@@ -479,15 +554,22 @@ def _render_results(results):
 
 def _create_comparison_chart(results):
     fig = go.Figure()
+    drawn = []   # [(name, y序列)] 用于 E3 重合检测
     for name, r in results.items():
         curve = r.get('equity_curve') or []
         if not curve or not isinstance(curve[0], dict):
             continue
         color = (r.get('config') or {}).get('color') or '#888'
+        ys = tuple(round(float(p.get('equity') or 0), 2) for p in curve)
+        # E3: 与之前某条曲线几乎重合 → 用虚线画，避免完全被遮盖
+        dash = ('dash' if any(_nearly_same_seq(ys, p_ys)
+                              for _, p_ys in drawn) else None)
+        drawn.append((name, ys))
         fig.add_trace(go.Scatter(
             x=[p.get('timestamp') for p in curve],
             y=[p.get('equity') for p in curve],
-            name=name, line=dict(color=color, width=2),
+            name=name,
+            line=dict(color=color, width=2, dash=dash),
         ))
     fig.update_layout(
         title='策略资金曲线对比', xaxis_title='时间',
