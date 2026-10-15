@@ -95,7 +95,7 @@ def _compute_stats(df, stat_start_dt, stat_end_dt):
             col_total    : Series       每个日期在活跃单元格上的合计
             total_tweets : int          活跃单元格推文总数
             max_val      : int          活跃单元格最大值（全空时兜底 1，避免除零）
-            avg_per_hour : float        df['tweet_count'] 全量均值
+            avg_per_hour : float        活跃口径均值 = 活跃总数/活跃格数（F4 统一口径）
             peak_hour    : Series|None  峰值所在行
             days_count   : int          覆盖天数
             trend        : str          '↑' / '↓' / '→' / '—'
@@ -163,7 +163,11 @@ def _compute_stats(df, stat_start_dt, stat_end_dt):
     ]
     max_val = max(all_active_values) if all_active_values else 1
 
-    avg_per_hour = df['tweet_count'].mean()
+    # F4: 平均口径统一——原来用 df['tweet_count'].mean()（全量均值，
+    # 含统计期外的行、且不含 pivot 补 0 的空格），与表格的活跃期统计
+    # 不一致。统一为活跃口径：活跃总数 / 活跃格数，与 Avg 列、总推文卡同源
+    active_count = int(active.values.sum())
+    avg_per_hour = total_tweets / active_count if active_count else 0
     peak_hour = df.loc[df['tweet_count'].idxmax()] if not df.empty else None
     days_count = len(df['date'].unique())
 
@@ -261,7 +265,7 @@ def render_explorer_section():
         html.Div(id='tweet-explorer-table', style={'overflowX': 'auto', 'marginTop': '10px'}),
         html.Div([
             html.Strong("📖 如何阅读："),
-            html.Span("表格横轴为日期，纵轴为 UTC 小时，单元格颜色深浅表示该时段推文数。Total 行 = 该日期全天推文总数；Avg 列 = 该小时在所有日期中的平均推文数。仅活跃期（事件时间范围内）的数据会着色统计，其余显示为灰色。",
+            html.Span("表格横轴为日期，纵轴为 UTC 小时，单元格颜色深浅表示该时段推文数。Total 行 = 该日期活跃时段推文总数（末格为日均总量）；Avg 列 = 该小时仅统计活跃期的平均推文数；顶部「活跃期平均/小时」卡 = 活跃期平均每小时推文数，与表格同口径。仅活跃期（事件时间范围内）的数据会着色统计，其余显示为灰色。",
                       style={'color': '#495057', 'fontSize': '12px'}),
             html.Br(),
             html.Strong("💡 统计意义："),
@@ -369,7 +373,7 @@ def update_tweet_explorer(mode, event_id, start_date, end_date, pathname):
         ], style={'textAlign': 'center', 'padding': '8px 12px', 'backgroundColor': 'white', 'borderRadius': '6px',
                   'boxShadow': '0 1px 3px rgba(0,0,0,0.1)', 'minWidth': '80px'}),
         html.Div([
-            html.Div("📈 平均/小时", style={'fontSize': '12px', 'color': '#6c757d'}),
+            html.Div("📈 活跃期平均/小时", style={'fontSize': '12px', 'color': '#6c757d'}),
             html.Div(f"{avg_per_hour:.1f}", style={'fontSize': '20px', 'fontWeight': 'bold'})
         ], style={'textAlign': 'center', 'padding': '8px 12px', 'backgroundColor': 'white', 'borderRadius': '6px',
                   'boxShadow': '0 1px 3px rgba(0,0,0,0.1)', 'minWidth': '80px'}),
@@ -420,7 +424,9 @@ def update_tweet_explorer(mode, event_id, start_date, end_date, pathname):
     total_row = ['Total']
     for j in range(len(dates)):
         total_row.append({'value': int(col_total.iloc[j]), 'color': '#e8e8e8'})
-    avg_all = (round(total_tweets / len(hours), 1) if hours else 0)
+    # F4: 末格从 total/24（多天时=均值×天数，语义错位）改为日均总量，
+    # 与 Total 行各日期的"全天合计"同口径
+    avg_all = (round(total_tweets / len(dates), 1) if dates else 0)
     total_row.append({'value': avg_all, 'color': '#e8e8e8'})
     cell_vals.append(total_row)
 

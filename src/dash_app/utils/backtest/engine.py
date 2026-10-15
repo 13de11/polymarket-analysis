@@ -4,9 +4,9 @@
 """
 
 import pandas as pd
-import numpy as np
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 from datetime import datetime
+from src.dash_app.utils.metrics.calculator import calculate_metrics_from_trades
 
 
 class BacktestEngine:
@@ -93,9 +93,9 @@ class BacktestEngine:
             last_row = signal_df.iloc[-1]
             self._close_position(last_row['timestamp'], last_row[price_col], reason='强制平仓')
 
-        # 计算最终指标
+        # 计算最终指标（统一走 calculator.py，engine 不再各自实现）
         final_capital = self._calculate_equity(signal_df.iloc[-1][price_col]) if not signal_df.empty else self.cash
-        metrics = self._calculate_metrics(signal_df)
+        metrics = calculate_metrics_from_trades(self.trades, self.equity_curve, self.initial_capital)
 
         return {
             'trades': self.trades,
@@ -230,107 +230,3 @@ class BacktestEngine:
         self.entry_price = 0
         self.entry_time = None
 
-    def _calculate_metrics(self, signal_df: pd.DataFrame) -> Dict:
-        """计算绩效指标"""
-        # 筛选已完成的交易
-        completed_trades = [t for t in self.trades if t['result'] != 'pending']
-
-        if not completed_trades:
-            return {
-                'total_trades': 0,
-                'win_rate': 0,
-                'profit_factor': 0,
-                'avg_profit': 0,
-                'avg_loss': 0,
-                'max_profit': 0,
-                'max_loss': 0,
-                'total_profit': 0,
-                'avg_hold_hours': 0,
-                'max_hold_hours': 0,
-            }
-
-        profits = [t['profit'] for t in completed_trades if t['profit'] is not None]
-        win_trades = [t for t in completed_trades if t['profit'] is not None and t['profit'] > 0]
-        loss_trades = [t for t in completed_trades if t['profit'] is not None and t['profit'] < 0]
-
-        total_profit = sum(profits) if profits else 0
-        win_rate = len(win_trades) / len(completed_trades) * 100 if completed_trades else 0
-
-        avg_win = sum([t['profit'] for t in win_trades]) / len(win_trades) if win_trades else 0
-        avg_loss = sum([t['profit'] for t in loss_trades]) / len(loss_trades) if loss_trades else 0
-
-        profit_factor = abs(sum([t['profit'] for t in win_trades]) / sum([t['profit'] for t in loss_trades])) if loss_trades and sum([t['profit'] for t in loss_trades]) != 0 else 0
-
-        max_profit = max([t['profit'] for t in win_trades]) if win_trades else 0
-        max_loss = min([t['profit'] for t in loss_trades]) if loss_trades else 0
-
-        hold_hours = [t['hold_hours'] for t in completed_trades if t['hold_hours'] is not None]
-
-        # 计算最大回撤
-        max_drawdown, max_drawdown_pct = self._calculate_max_drawdown()
-
-        # 计算夏普比率
-        sharpe_ratio = self._calculate_sharpe_ratio()
-
-        return {
-            'total_trades': len(completed_trades),
-            'win_rate': win_rate,
-            'profit_factor': profit_factor,
-            'avg_profit': avg_win,
-            'avg_loss': abs(avg_loss) if avg_loss else 0,
-            'max_profit': max_profit,
-            'max_loss': abs(max_loss) if max_loss else 0,
-            'total_profit': total_profit,
-            'avg_hold_hours': sum(hold_hours) / len(hold_hours) if hold_hours else 0,
-            'max_hold_hours': max(hold_hours) if hold_hours else 0,
-            'max_drawdown': max_drawdown,
-            'max_drawdown_pct': max_drawdown_pct,
-            'sharpe_ratio': sharpe_ratio,
-            'final_capital': self._calculate_equity(signal_df.iloc[-1]['price']) if not signal_df.empty else self.cash,
-            'total_return': (self._calculate_equity(signal_df.iloc[-1]['price']) / self.initial_capital - 1) * 100 if not signal_df.empty else 0,
-        }
-
-    def _calculate_max_drawdown(self) -> Tuple[float, float]:
-        """计算最大回撤"""
-        if not self.equity_curve:
-            return 0, 0
-
-        equity_values = [e['equity'] for e in self.equity_curve]
-        max_equity = equity_values[0]
-        max_drawdown = 0
-        max_drawdown_pct = 0
-
-        for equity in equity_values:
-            if equity > max_equity:
-                max_equity = equity
-            drawdown = max_equity - equity
-            drawdown_pct = (drawdown / max_equity) * 100 if max_equity > 0 else 0
-            if drawdown > max_drawdown:
-                max_drawdown = drawdown
-                max_drawdown_pct = drawdown_pct
-
-        return max_drawdown, max_drawdown_pct
-
-    def _calculate_sharpe_ratio(self) -> float:
-        """计算夏普比率（无风险利率为0，不年化）
-
-        F1 修正：原实现用 sqrt(252*24)≈77.8 年化，但事件只有 7 天 / 48 小时，
-        年化后的 Sharpe 严重虚高（7 天回测算出 5+）。改为返回周期内原始
-        mean/std，数字小但诚实——它衡量的是回测期内每小时的信噪比。
-        """
-        if len(self.equity_curve) < 2:
-            return 0
-
-        equity_values = [e['equity'] for e in self.equity_curve]
-        returns = [(equity_values[i] / equity_values[i-1] - 1) for i in range(1, len(equity_values))]
-
-        if not returns:
-            return 0
-
-        avg_return = np.mean(returns)
-        std_return = np.std(returns)
-
-        if std_return == 0:
-            return 0
-
-        return float(avg_return / std_return)
