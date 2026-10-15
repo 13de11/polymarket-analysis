@@ -364,7 +364,7 @@ line=dict(color=COLOR_PRIMARY)
 | **S3** | `save_params` 新旧 ctx 风格混用 | 统一 `ctx.triggered_id` |
 | **S5** | `backtest/callbacks.py` 残留 `import dash` | 换 `from dash import ctx` |
 | **S6** | 信号生成器状态是实例变量（旧 T3），`_determine_signal` 里 prev_distance 冗余更新 | 改局部变量或 dataclass |
-| **E4** | 只有 direction_signal 一种策略，buy_hold/reverse_signal 注释掉了（旧 T4+R4） | 实现 buy_hold 基线，评价信号 alpha |
+| **E4** | 只有 direction_signal 一种策略，buy_hold/reverse_signal 注释掉了（旧 T4+R4） | 注册表解注释 + runner 按 strategy_id 变换信号（buy_hold 全↑+**全部资金**一次买入 / reverse ↑↔↓ 互换），复用同一回测管线 ✅已完成（backtest 页基线三卡此前已有） |
 | **B3** | research 参数面板未统一到 schema | 迁移 |
 | **F5** | 动量修正是递归累积，代码注释说"设计意图" | 确认是否合理，加开关 |
 | **F6** | 命中阈值 0.99 硬编码（旧 IN-4 同类） | 参数化 |

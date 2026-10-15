@@ -64,11 +64,26 @@ def run_backtest(params: dict, series='7d'):
         if signal_df.empty:
             return None
 
+        # 2.5 E4: 按策略类型变换信号（基线策略复用同一套回测管线）
+        # - buy_hold: 全部置 '↑' → engine 开仓后一直持有到强制平仓 = 全买持有
+        # - reverse_signal: ↑/↓ 互换（'→' 不变）→ 验证方向信号是否有真 alpha
+        strategy_id = params.get('strategy_id') or 'direction_signal'
+        if strategy_id == 'buy_hold':
+            signal_df['signal'] = '↑'
+        elif strategy_id == 'reverse_signal':
+            signal_df['signal'] = signal_df['signal'].replace(
+                {'↑': '↓', '↓': '↑'})
+
         # 3. 执行回测
         engine = BacktestEngine(
             initial_capital=params.get('initial_capital', 100),
             position_mode=params.get('position_mode', 'fixed_amount'),
-            position_size=params.get('position_size', 10),
+            # E4 修正: buy_hold 用全部资金一次买入——"全买持有"的本意，
+            # 也与 backtest 页 baseline.py 基线卡的口径一致；
+            # 其余策略按交易设置里的仓位（position_mode/position_size）
+            position_size=(params.get('initial_capital', 100)
+                           if strategy_id == 'buy_hold'
+                           else params.get('position_size', 10)),
         )
         result = engine.run(signal_df, price_col='price')
 
