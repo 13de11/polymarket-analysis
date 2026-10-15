@@ -8,6 +8,11 @@ import numpy as np
 from datetime import datetime, timedelta
 from .data_loader import run_query
 
+# F6: "市场命中"判定阈值——最终价格 > 此值视为该区间"达成"。
+# 单一来源：stats_loader 的 SQL 与各页面文案统一引用此常量，
+# 未来调整阈值只改这一处（当前 0.99，与历史行为一致）
+HIT_THRESHOLD = 0.99
+
 
 def get_series_condition(series: str = '7d', table_alias: str = 'e') -> str:
     """
@@ -51,7 +56,7 @@ def get_overview_stats(series: str = '7d') -> dict:
         SELECT COUNT(DISTINCT p.market_id) as hit_count
         FROM price_hourly p
         JOIN markets m ON p.market_id = m.id
-        WHERE p.price_last > 0.99
+        WHERE p.price_last > {HIT_THRESHOLD}
           AND m.event_id IN ({placeholders})
     """, event_ids)
     hit_count = hit_markets['hit_count'].iloc[0] if not hit_markets.empty else 0
@@ -61,7 +66,7 @@ def get_overview_stats(series: str = '7d') -> dict:
         SELECT m.range_start, m.range_end, COUNT(*) as hit_count
         FROM price_hourly p
         JOIN markets m ON p.market_id = m.id
-        WHERE p.price_last > 0.99
+        WHERE p.price_last > {HIT_THRESHOLD}
           AND m.range_start IS NOT NULL
           AND m.event_id IN ({placeholders})
         GROUP BY m.range_start, m.range_end
@@ -107,7 +112,7 @@ def get_hit_distribution(series: str = '7d') -> pd.DataFrame:
             m.range_start,
             m.range_end,
             m.is_plus,
-            MAX(CASE WHEN p.price_last > 0.99 THEN 1 ELSE 0 END) as is_hit
+            MAX(CASE WHEN p.price_last > {HIT_THRESHOLD} THEN 1 ELSE 0 END) as is_hit
         FROM events e
         JOIN markets m ON e.id = m.event_id
         JOIN price_hourly p ON m.id = p.market_id
@@ -220,7 +225,7 @@ def get_histogram_data(series: str = '7d') -> pd.DataFrame:
                 p.market_id,
                 ROW_NUMBER() OVER (PARTITION BY p.market_id ORDER BY p.hour_start_utc DESC) as rn
             FROM price_hourly p
-            WHERE p.price_last > 0.99
+            WHERE p.price_last > {HIT_THRESHOLD}
         ) latest
         JOIN markets m ON latest.market_id = m.id
         WHERE latest.rn = 1

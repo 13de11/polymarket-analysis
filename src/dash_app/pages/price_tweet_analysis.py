@@ -8,6 +8,7 @@ from plotly.subplots import make_subplots
 import pandas as pd
 from datetime import datetime
 
+from src.dash_app.utils.stats_loader import HIT_THRESHOLD
 from src.dash_app.utils.data_loader import (
     get_elon_tweet_events,
     get_markets_by_event,
@@ -42,7 +43,7 @@ def layout():
                 html.Span("🎯 ", style={'fontSize': '18px'}),
                 html.Strong("命中市场"),
                 html.Span(" | 最后一个 ", style={'margin': '0 5px'}),
-                html.Code("price_last > 0.99"),
+                html.Code(f"price_last > {HIT_THRESHOLD}"),
                 html.Span(" 的市场", style={'margin': '0 5px'}),
             ], style={'display': 'inline-block'}),
         ], style={
@@ -153,7 +154,7 @@ def layout():
                 ]),
                 html.Li([
                     html.Strong("⭐ 命中市场"),
-                    html.Span("：最后一个价格 > 0.99 的市场（即该区间最终「达成」），红色线高亮")
+                    html.Span(f"：最后一个价格 > {HIT_THRESHOLD} 的市场（即该区间最终「达成」），红色线高亮")
                 ]),
             ], style={'margin': '6px 0', 'paddingLeft': '20px', 'fontSize': '12px', 'color': '#495057'})
         ], style={
@@ -270,7 +271,7 @@ def update_markets(event_id, pathname):
     else:
         selected_ids = markets_df.head(5)['id'].tolist()
         target_info = {}
-        hint = "⚠️ 未找到 price_last > 0.99 的市场，默认显示前5个"
+        hint = f"⚠️ 未找到 price_last > {HIT_THRESHOLD} 的市场，默认显示前5个"
 
     return options, selected_ids, target_info, hint
 

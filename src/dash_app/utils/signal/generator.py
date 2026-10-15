@@ -117,9 +117,11 @@ class DirectionSignalGenerator:
         for idx, row in df.iterrows():
             total_estimate = row['total_estimate']
 
-            # 动量修正
-            # 注意：st.prev_total_estimate 保存的是"已修正后"的值，
-            # 所以修正系数是递归的（当前修正受之前修正影响）。这是设计意图。
+            # 动量修正（F5 已确认：非递归）
+            # 每行修正 = 该行原始估算 × clip(1 + coef×速率变化率, 0.8, 1.2)，
+            # 只依赖当行的 avg_rate，与上一行的修正值无关（实测逐行偏差为 0）。
+            # st.prev_total_estimate 仅用于跳过第一行，不参与修正计算。
+            # （旧注释声称"递归累积、设计意图"，系误导，已修正）
             if self.momentum_enable and st.prev_total_estimate is not None:
                 rate_change = self._calculate_momentum(df, idx)
                 adjustment = 1 + self.momentum_coef * rate_change

@@ -365,9 +365,9 @@ line=dict(color=COLOR_PRIMARY)
 | **S5** | `backtest/callbacks.py` 残留 `import dash` | 换 `from dash import ctx` ✅已完成（复查无残留） |
 | **S6** | 信号生成器状态是实例变量（旧 T3），`_determine_signal` 里 prev_distance 冗余更新 | 改局部变量或 dataclass ✅已完成（`_LoopState` dataclass；实例复用污染已修；改前后 4 组参数信号逐值一致） |
 | **E4** | 只有 direction_signal 一种策略，buy_hold/reverse_signal 注释掉了（旧 T4+R4） | 注册表解注释 + runner 按 strategy_id 变换信号（buy_hold 全↑+**全部资金**一次买入 / reverse ↑↔↓ 互换），复用同一回测管线 ✅已完成（backtest 页基线三卡此前已有） |
-| **B3** | research 参数面板未统一到 schema | 迁移 |
-| **F5** | 动量修正是递归累积，代码注释说"设计意图" | 确认是否合理，加开关 |
-| **F6** | 命中阈值 0.99 硬编码（旧 IN-4 同类） | 参数化 |
+| **B3** | research 参数面板未统一到 schema | 迁移 ✅已完成（复查：Phase C1-C3 重构后三 tab 配置区均由 PARAM_SCHEMA 驱动的 `create_shared_panel` 生成，无手写控件残留） |
+| **F5** | 动量修正是递归累积，代码注释说"设计意图" | 实证确认实现**本就是非递归**（每行修正只依赖当行 avg_rate，逐行偏差 0）——系注释误导，已修正注释，行为零变化 ✅已完成 |
+| **F6** | 命中阈值 0.99 硬编码（旧 IN-4 同类） | 参数化 ✅已完成（`stats_loader.HIT_THRESHOLD = 0.99` 单一来源，SQL 4 处 + 页面文案 5 处统一引用，行为零变化） |
 
 ### 保留项（旧 P2/P3 未重新编号）
 
@@ -409,7 +409,7 @@ line=dict(color=COLOR_PRIMARY)
 ## 📌 版本状态
 
 - **稳定可用**：观察层（`/`、`/analysis`、`/insights`）、回测模块、策略研究三 Tab、跨页带参闭环（C1 已修）
-- **审计整改**：第一批（C1/F1/S4）、第二批（S1/F3/E3/E1/F4/F2，其中 E1 暂缓）全部完成；第三批待做（详见整改路线图）
+- **审计整改**：**全部完成**——第一批（C1/F1/S4）、第二批（S1/F3/E3/E1/F4/F2，E1 暂缓）、第三批（S2/S3/S5/S6/E4/B3/F5/F6）✅（详见整改路线图）
 
 ---
 

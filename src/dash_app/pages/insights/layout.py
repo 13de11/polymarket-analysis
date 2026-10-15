@@ -7,6 +7,7 @@ T2：Tab 内容内嵌为 dcc.Tab children，Dash 原生管显隐，
 
 from dash import html, dcc
 
+from src.dash_app.utils.stats_loader import HIT_THRESHOLD
 from src.dash_app.pages.insights.explorer import render_explorer_section
 from src.dash_app.pages.insights._blocks import info_block
 
@@ -31,7 +32,7 @@ def layout():
                         html.Strong("📊 核心指标含义："),
                         html.Span("总事件 = 所有已结束的事件数；总推文 = 覆盖时间内的推文总量；",
                                   style={'marginLeft': '10px'}),
-                        html.Span("命中市场 = 最终价格 > 0.99 的子市场数；最热区间 = 历史上命中次数最多的推文区间。",
+                        html.Span(f"命中市场 = 最终价格 > {HIT_THRESHOLD} 的子市场数；最热区间 = 历史上命中次数最多的推文区间。",
                                   style={'marginLeft': '5px'}),
                     ], style={'padding': '8px 12px', 'backgroundColor': '#f8f9fa', 'borderRadius': '4px', 'marginBottom': '10px'}),
                     html.Div(id='insights-kpi-cards', style={'marginBottom': 20}),
@@ -47,7 +48,7 @@ def layout():
                                style={'color': '#6c757d', 'fontSize': '13px', 'marginTop': 0}),
                         dcc.Graph(id='insights-hit-heatmap', style={'height': '500px'}),
                         info_block(
-                            how_to_read="每一行代表一个推文区间（如 180-199），每一列代表一个历史事件。红色格子表示该区间的最终价格 > 0.99（即“命中”），灰色表示未命中。",
+                            how_to_read=f"每一行代表一个推文区间（如 180-199），每一列代表一个历史事件。红色格子表示该区间的最终价格 > {HIT_THRESHOLD}（即“命中”），灰色表示未命中。",
                             meaning="热力图可以直观看出哪些区间更容易“达成”，以及不同事件之间的一致性。颜色越集中，说明该区间预测稳定性越高。",
                         )
                     ], style={'marginBottom': 30}),
