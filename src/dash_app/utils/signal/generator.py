@@ -5,7 +5,25 @@
 
 import pandas as pd
 import numpy as np
+from dataclasses import dataclass
 from typing import Dict, List, Tuple, Optional
+
+
+@dataclass
+class _LoopState:
+    """generate_signals 逐行遍历的局部状态。
+
+    S6 重构：原来是实例变量（self.prev_distance 等），两个问题——
+    1) 同一个 generator 实例复用（连续调两次 generate_signals）时，
+       上一次的残留状态会污染下一次的信号序列（实测首个信号就不同）；
+    2) prev_distance 在 _determine_signal 和主循环两处更新，逻辑冗余。
+    现改为每次调用 generate_signals 时新建的局部状态，实例可安全复用。
+    """
+    prev_distance: Optional[float] = None
+    prev_price: Optional[float] = None
+    prev_total_estimate: Optional[float] = None
+    current_signal: str = '→'
+    hold_hours: int = 0
 
 
 class DirectionSignalGenerator:
@@ -45,12 +63,8 @@ class DirectionSignalGenerator:
         self.window_start = params.get('window_start', None)
         self.window_start_ts = params.get('window_start_ts', None)  # ← expanding 起点时间戳（秒）
 
-        # 状态变量
-        self.prev_distance = None
-        self.current_signal = '→'
-        self.hold_hours = 0
-        self.prev_total_estimate = None
-        self.prev_price = None  # ← 修复：显式初始化
+        # 注意：遍历状态（prev_distance/hold_hours 等）已移入 _LoopState，
+        # 每次 generate_signals 调用独立，实例可安全复用（S6）
 
     def generate_signals(self, price_data: pd.DataFrame, tweet_data: pd.DataFrame) -> pd.DataFrame:
         """
@@ -98,29 +112,30 @@ class DirectionSignalGenerator:
         distances = []
         estimates = []
         hold_hours_list = []
+        st = _LoopState()
 
         for idx, row in df.iterrows():
             total_estimate = row['total_estimate']
 
             # 动量修正
-            # 注意：prev_total_estimate 保存的是"已修正后"的值，
+            # 注意：st.prev_total_estimate 保存的是"已修正后"的值，
             # 所以修正系数是递归的（当前修正受之前修正影响）。这是设计意图。
-            if self.momentum_enable and self.prev_total_estimate is not None:
+            if self.momentum_enable and st.prev_total_estimate is not None:
                 rate_change = self._calculate_momentum(df, idx)
                 adjustment = 1 + self.momentum_coef * rate_change
                 adjustment = np.clip(adjustment, 0.8, 1.2)
                 total_estimate = total_estimate * adjustment
 
             distance = abs(total_estimate - self.median)
-            signal, hold_hours = self._determine_signal(distance, row['price'], idx)
+            signal, hold_hours = self._determine_signal(distance, row['price'], st)
 
             signals.append(signal)
             distances.append(distance)
             estimates.append(total_estimate)
             hold_hours_list.append(hold_hours)
 
-            self.prev_distance = distance
-            self.prev_total_estimate = total_estimate
+            st.prev_distance = distance
+            st.prev_total_estimate = total_estimate
 
         df['signal'] = signals
         df['distance'] = distances
@@ -141,44 +156,44 @@ class DirectionSignalGenerator:
             return 0.0
         return (df['avg_rate'].iloc[idx] - recent_avg) / recent_avg
 
-    def _determine_signal(self, distance: float, price: float, idx: int) -> Tuple[str, int]:
-        # 注意：self.prev_distance 在函数内和调用处（generate_signals 循环末尾）都会更新。
-        # 行为正确（最终值一致），但逻辑上冗余。
+    def _determine_signal(self, distance: float, price: float,
+                          st: _LoopState) -> Tuple[str, int]:
+        """判定单行信号。st 为本次 generate_signals 的局部状态（S6），
+        prev_distance 只在主循环末尾统一更新，此处不再冗余写。"""
         # 容差过滤
         if distance <= self.capacity:
-            self.prev_price = price
+            st.prev_price = price
             return '→', 0
 
         # 首次判断
-        if self.prev_distance is None:
-            self.prev_distance = distance
-            self.prev_price = price
+        if st.prev_distance is None:
+            st.prev_price = price
             return '→', 0
 
         # 噪声过滤
-        price_change = abs(price - self.prev_price) if self.prev_price is not None else 0
-        distance_change = distance - self.prev_distance
+        price_change = abs(price - st.prev_price) if st.prev_price is not None else 0
+        distance_change = distance - st.prev_distance
 
         if price_change <= self.price_threshold and abs(distance_change) <= self.distance_threshold:
-            self.hold_hours += 1
-            self.prev_price = price  # ← 修复：噪音分支也要更新 prev_price
-            if self.hold_hours >= self.inertia_hours:
-                self.hold_hours = 0
-                return '→', self.hold_hours
-            return self.current_signal, self.hold_hours
+            st.hold_hours += 1
+            st.prev_price = price  # 噪音分支也要更新 prev_price
+            if st.hold_hours >= self.inertia_hours:
+                st.hold_hours = 0
+                return '→', st.hold_hours
+            return st.current_signal, st.hold_hours
 
         # 有效信号
-        self.hold_hours = 0
-        if distance < self.prev_distance:
+        st.hold_hours = 0
+        if distance < st.prev_distance:
             signal = '↑'
-        elif distance > self.prev_distance:
+        elif distance > st.prev_distance:
             signal = '↓'
         else:
             signal = '→'
 
-        self.current_signal = signal
-        self.prev_price = price
-        return signal, self.hold_hours
+        st.current_signal = signal
+        st.prev_price = price
+        return signal, st.hold_hours
 
     def apply_display_filter(self, df: pd.DataFrame, mode: str = None) -> pd.DataFrame:
         """仅用于显示时过滤信号（不影响回测）"""

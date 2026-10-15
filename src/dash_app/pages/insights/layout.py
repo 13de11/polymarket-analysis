@@ -136,6 +136,4 @@ def layout():
             ],
             style={'marginBottom': '15px'}
         ),
-
-        dcc.Store(id='insights-store', data={}),
     ], style={'padding': '0 20px'})
