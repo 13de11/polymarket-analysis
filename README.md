@@ -349,10 +349,10 @@ line=dict(color=COLOR_PRIMARY)
 
 | 编号 | 问题 | 修法 |
 |------|------|------|
-| **S1** | metrics 两套实现：`BacktestEngine._calculate_metrics` vs `calculator.py`，Sharpe 口径不同 | 统一到 `calculator.py`，engine 只调它 |
-| **F3** | 方向准确率不看幅度：价格涨 0.001 跟涨 0.05 都算"正确" | 加加权准确率或平均幅度 |
+| **S1** | metrics 两套实现：`BacktestEngine._calculate_metrics` vs `calculator.py`，Sharpe 口径不同 | 统一到 `calculator.py`，engine 只调它 ✅已统一 |
+| **F3** | 方向准确率不看幅度：价格涨 0.001 跟涨 0.05 都算"正确" | 每窗口加对时均幅/错时均幅/每信号期望 ✅已完成（选幅度方案，弃加权） |
 | **E3** | 策略对比曲线/散点重合时不可见 | 重合检测 + 提示 |
-| **E1** | 缺 Sortino / Calmar / Exposure 指标 | `calculator.py` 补算 |
+| **E1** | 缺 Sortino / Calmar / Exposure 指标 | ⏸️ 暂缓（2026-10-15 用户决定不做：calculator 已补算但 overview 白名单不展示，直接移除） |
 | **F4** | explorer 三个"平均"口径不一致（旧 IN-13） | 统一口径或标注统计范围 |
 | **F2** | 无交易成本/滑点，回测收益偏乐观 | 至少 UI 标注；可选加费率参数 |
 
@@ -409,7 +409,7 @@ line=dict(color=COLOR_PRIMARY)
 ## 📌 版本状态
 
 - **稳定可用**：观察层（`/`、`/analysis`、`/insights`）、回测模块、策略研究三 Tab、跨页带参闭环（C1 已修）
-- **审计整改**：第一批（C1/F1/S4）已完成，第二批（指标一致性 + 补全）进行中（详见整改路线图）
+- **审计整改**：第一批（C1/F1/S4）已完成，第二批 S1（指标统一）/ E1（指标补全）已完成；剩余 F3/F4/F2/E3 待做（详见整改路线图）
 
 ---
 
