@@ -130,7 +130,9 @@ def render_evaluation(params, cached_result):
         html.Div([
             html.Strong("📖 如何阅读："),
             html.Br(),
-            html.Span("• 多窗口准确率：信号发出后 N 小时内价格是否朝预测方向变化。",
+            html.Span("• 多窗口准确率：信号发出后 N 小时内价格是否朝预测方向变化。"
+                      "对时均幅/错时均幅 = 判断对/错时价格朝预测方向平均走了多少（负 = 反向）；"
+                      "每信号期望 = 平均每个信号朝预测方向走的幅度，为正且量够大，信号才有交易价值。",
                       style={'fontSize': '12px', 'color': '#495057'}),
             html.Br(),
             html.Span("• 策略 vs 基线：策略收益高于基线说明有超额收益。",
@@ -160,15 +162,19 @@ def _render_accuracy_section(acc_result):
             td(f"{d['up_acc'] * 100:.1f}%"),
             td(f"{d['down_acc'] * 100:.1f}%"),
             td(f"{d['overall'] * 100:.1f}%", fontWeight='bold'),
+            td(f"{d.get('avg_correct_move', 0):+.2f}%"),
+            td(f"{d.get('avg_wrong_move', 0):+.2f}%"),
+            td(f"{d.get('expectancy', 0):+.2f}%", fontWeight='bold'),
             td(str(d['samples'])),
         ]))
 
     return html.Div([
         html.H5("🎯 多窗口方向准确率", style={'margin': '10px 0'}),
-        html.Div("信号发出后 N 小时内价格是否朝预测方向变化",
+        html.Div("信号发出后 N 小时内价格是否朝预测方向变化，以及走了多远",
                  style={'fontSize': '12px', 'color': '#6c757d',
                         'marginBottom': '8px'}),
-        tbl(['窗口', '▲ 上涨准确率', '▼ 下跌准确率', '综合', '样本数'], rows),
+        tbl(['窗口', '▲ 上涨准确率', '▼ 下跌准确率', '综合',
+             '对时均幅', '错时均幅', '每信号期望', '样本数'], rows),
     ])
 
 
