@@ -1,6 +1,6 @@
 """
 数据分析中心 - 回调
-- update_insights_overview：KPI + MA + 热力图
+- update_insights_overview：窗口化 KPI + 区间命中柱状图 + 命中热力图
 - update_insights_tweets：推文时间线 + 热力图 + 24h 分布
 - update_insights_hits：命中分布 + 相关性 + 存活时长
 """
@@ -8,6 +8,7 @@
 from dash import html, dcc, Input, Output, callback, no_update
 import plotly.graph_objects as go
 import pandas as pd
+import numpy as np
 
 from src.dash_app.utils.stats_loader import (
     get_overview_stats,
@@ -16,32 +17,49 @@ from src.dash_app.utils.stats_loader import (
     get_tweet_heatmap,
     get_correlation_data,
     get_histogram_data,
-    get_ma_values,
     get_hourly_distribution,
     get_survival_by_range,
 )
 
 
-# ========== 回调 1：KPI + 移动平均 + 命中热力图 ==========
+# ========== 回调 1：窗口化 KPI + 区间命中柱状图 + 命中热力图 ==========
+
+# KPI 卡片字段说明（悬停 title 用）
+_KPI_TIPS = {
+    'total_events': '窗口内结算完成、且价格数据已同步到结算时刻的事件数量（每个事件恰有一个命中区间）',
+    'total_tweets': '窗口内所有事件的统计区间（开始→结算）内推文数合计',
+    'sub_market_count': '窗口内事件包含的全部子市场数量',
+    'last_hit_label': '窗口内最近一个出现命中的事件，及其命中的推文区间',
+    'hot_range_label': '窗口内命中次数最多的推文区间',
+    'hot_range_ratio': '最热区间的命中次数 ÷ 窗口内已结束事件数，衡量该区间的覆盖面',
+    'latest_total': '窗口内最近一个已结束事件的总推文数',
+    'latest_avg': '最近事件的总推文 ÷ 事件时长（小时），衡量事件期间的持续发推强度',
+    'latest_peak': '最近事件中单小时的最高推文数，反映热度峰值',
+}
+
 
 @callback(
     Output('insights-kpi-cards', 'children'),
-    Output('insights-ma-cards', 'children'),
+    Output('insights-range-hit-bar', 'figure'),
     Output('insights-hit-heatmap', 'figure'),
     Input('series-selector', 'value'),
+    Input('insights-window', 'value'),
     Input('url', 'pathname'),
 )
-def update_insights_overview(series, pathname):
+def update_insights_overview(series, window_days, pathname):
     if pathname != '/insights':
         return no_update, no_update, no_update
 
-    stats = get_overview_stats(series)
+    stats = get_overview_stats(series, window_days)
+    hit_df = get_hit_distribution(series, window_days)
 
-    def _kpi_card(icon_label, value):
+    # ---- KPI 卡片（三组：窗口规模 / 命中情况 / 最近事件） ----
+    def _kpi_card(label, value, tip=''):
         return html.Div([
-            html.Div(icon_label, style={'fontSize': '12px',
-                                        'color': '#6c757d'}),
-            html.Div(str(value), style={'fontSize': '24px',
+            html.Div(label, title=tip,
+                     style={'fontSize': '12px', 'color': '#6c757d',
+                            'cursor': 'help'}),
+            html.Div(str(value), style={'fontSize': '22px',
                                         'fontWeight': 'bold',
                                         'marginTop': '4px'})
         ], style={
@@ -49,43 +67,77 @@ def update_insights_overview(series, pathname):
             'backgroundColor': 'white',
             'borderRadius': '6px',
             'boxShadow': '0 1px 3px rgba(0,0,0,0.1)',
-            'minWidth': '140px', 'flex': '1'
+            'minWidth': '150px', 'flex': '1'
         })
 
-    kpi_cards = html.Div([
-        _kpi_card("📅 总事件", stats['total_events']),
-        _kpi_card("🐦 总推文", f"{stats['total_tweets']:,}"),
-        _kpi_card("🎯 命中市场", stats['hit_count']),
-        _kpi_card("🔥 最热区间", stats['hot_range']),
-    ], style={
-        'display': 'flex', 'flexWrap': 'wrap', 'gap': '15px'
-    })
-
-    ma = get_ma_values()
-
-    def _ma_card(label, value, color):
+    def _kpi_row(title, cards):
         return html.Div([
-            html.Div(label, style={'fontSize': '12px', 'color': '#6c757d'}),
-            html.Div(f"{value:.1f}", style={'fontSize': '24px',
-                                            'fontWeight': 'bold',
-                                            'color': color,
-                                            'marginTop': '4px'})
-        ], style={
-            'textAlign': 'center', 'padding': '15px',
-            'backgroundColor': 'white',
-            'borderRadius': '6px',
-            'boxShadow': '0 1px 3px rgba(0,0,0,0.1)',
-            'minWidth': '140px', 'flex': '1'
-        })
+            html.Div(title, style={'fontSize': '12px', 'color': '#6c757d',
+                                   'fontWeight': 'bold', 'marginBottom': '6px'}),
+            html.Div(cards, style={'display': 'flex', 'flexWrap': 'wrap',
+                                   'gap': '12px'}),
+        ], style={'marginBottom': '14px'})
 
-    ma_cards = html.Div([
-        _ma_card("24小时平均", ma['ma_24h'], '#3498db'),
-        _ma_card("7天平均", ma['ma_7d'], '#2ecc71'),
-        _ma_card("14天平均", ma['ma_14d'], '#e67e22'),
-    ], style={'display': 'flex', 'flexWrap': 'wrap', 'gap': '15px'})
+    latest = stats.get('latest_event') or {}
+    kpi_cards = html.Div([
+        _kpi_row('窗口规模', [
+            _kpi_card('📅 已结束事件', stats['total_events'], _KPI_TIPS['total_events']),
+            _kpi_card('🐦 总推文量', f"{stats['total_tweets']:,}", _KPI_TIPS['total_tweets']),
+            _kpi_card('🗂 子市场总数', stats['sub_market_count'], _KPI_TIPS['sub_market_count']),
+        ]),
+        _kpi_row('命中情况', [
+            _kpi_card('🕐 最近命中', stats['last_hit_label'], _KPI_TIPS['last_hit_label']),
+            _kpi_card('🔥 最热区间', stats['hot_range_label'], _KPI_TIPS['hot_range_label']),
+            _kpi_card('🏆 热区间覆盖', stats['hot_range_ratio'], _KPI_TIPS['hot_range_ratio']),
+        ]),
+        _kpi_row('最近事件', [
+            _kpi_card('🆕 事件推文总量',
+                      f"{latest.get('total', 0):,}" if latest else '—',
+                      _KPI_TIPS['latest_total']),
+            _kpi_card('⏱ 平均小时发推',
+                      f"{latest.get('avg_per_hour', 0):.1f}" if latest else '—',
+                      _KPI_TIPS['latest_avg']),
+            _kpi_card('⚡ 小时推文峰值',
+                      f"{latest.get('peak', 0):,}" if latest else '—',
+                      _KPI_TIPS['latest_peak']),
+        ]),
+    ])
 
-    hit_df = get_hit_distribution(series)
+    # ---- 区间命中柱状图（含 0 次命中的区间，便于看全分布） ----
+    if not hit_df.empty:
+        def _bar_label(lbl):
+            """'0-39' 这类无下界区间显示为 '＜40'，更直观"""
+            if lbl.startswith('0-'):
+                upper = lbl.split('-')[1]
+                return f"＜{int(upper) + 1}" if upper.isdigit() else lbl
+            return lbl
 
+        all_ranges = (hit_df[['range_label', 'range_start']]
+                      .drop_duplicates()
+                      .sort_values('range_start'))
+        counts = (hit_df[hit_df['is_hit'] == 1]
+                  .groupby('range_label')['is_hit'].sum())
+        all_ranges['hit_count'] = (all_ranges['range_label'].map(counts)
+                                   .fillna(0).astype(int))
+        x_labels = all_ranges['range_label'].map(_bar_label)
+        bar_fig = go.Figure(go.Bar(
+            x=x_labels,
+            y=all_ranges['hit_count'],
+            text=all_ranges['hit_count'],
+            textposition='outside',
+            marker=dict(color=all_ranges['hit_count'],
+                        colorscale='Reds', showscale=False),
+            hovertemplate='区间: %{x}<br>命中次数: %{y}<extra></extra>',
+        ))
+        bar_fig.update_layout(
+            xaxis={'title': '推文区间', 'tickangle': -45},
+            yaxis={'title': '命中次数', 'dtick': 1},
+            margin={'l': 40, 'r': 20, 't': 20, 'b': 80}, height=320,
+        )
+    else:
+        bar_fig = go.Figure().add_annotation(text="窗口内暂无数据", showarrow=False)
+
+    # ---- 事件-区间命中热力图（最多展示最近 30 个事件） ----
     if not hit_df.empty:
         events_unique = hit_df['event_short'].unique()
         if len(events_unique) > 30:
@@ -95,8 +147,10 @@ def update_insights_overview(series, pathname):
         hit_pivot = hit_pivot.reindex(range_order)
         heatmap_fig = go.Figure(data=go.Heatmap(
             z=hit_pivot.values, x=hit_pivot.columns, y=hit_pivot.index,
+            customdata=np.where(hit_pivot.values == 1, '命中', '未命中'),
             colorscale=[[0, '#e8e8e8'], [1, '#d62728']], zmin=0, zmax=1, showscale=False,
-            hovertemplate='事件: %{x}<br>区间: %{y}<br>命中: %{z}<extra></extra>'
+            xgap=2, ygap=2,
+            hovertemplate='事件: %{x}<br>区间: %{y}<br>状态: %{customdata}<extra></extra>'
         ))
         heatmap_fig.update_layout(
             xaxis={'tickangle': -45, 'tickfont': {'size': 10}},
@@ -106,7 +160,7 @@ def update_insights_overview(series, pathname):
     else:
         heatmap_fig = go.Figure().add_annotation(text="暂无数据", showarrow=False)
 
-    return kpi_cards, ma_cards, heatmap_fig
+    return kpi_cards, bar_fig, heatmap_fig
 
 
 # ========== 回调 2：推文相关（时间线 + 热力图 + 24h 分布） ==========

@@ -28,22 +28,52 @@ def layout():
             children=[
                 # ============ Tab 1：总览 ============
                 dcc.Tab(label='📊 总览', value='overview', children=[
+                    # ---- 第一步：数据窗口选择 ----
                     html.Div([
-                        html.Strong("📊 核心指标含义："),
-                        html.Span("总事件 = 所有已结束的事件数；总推文 = 覆盖时间内的推文总量；",
+                        html.Div([
+                            html.Label("数据窗口：", style={'fontWeight': 'bold',
+                                                            'marginRight': '8px'}),
+                            dcc.Dropdown(
+                                id='insights-window',
+                                options=[
+                                    {'label': '近 30 天', 'value': 30},
+                                    {'label': '近 45 天', 'value': 45},
+                                    {'label': '近 60 天', 'value': 60},
+                                    {'label': '近 90 天', 'value': 90},
+                                ],
+                                value=30,
+                                clearable=False,
+                                style={'width': '160px'}
+                            ),
+                        ], style={'display': 'flex', 'alignItems': 'center'}),
+                        html.Span("选定窗口后，下方所有指标与图表仅统计该窗口内已结束的事件。",
+                                  className='hint', style={'marginTop': '6px'}),
+                    ], style={'marginBottom': 15}),
+
+                    html.Div([
+                        html.Strong("📊 指标说明："),
+                        html.Span("已结束事件 = 窗口内结算完成且价格数据已同步到结算时刻的事件（每个事件恰有一个命中区间）；",
                                   style={'marginLeft': '10px'}),
-                        html.Span(f"命中市场 = 最终价格 > {HIT_THRESHOLD} 的子市场数；最热区间 = 历史上命中次数最多的推文区间。",
+                        html.Span(f"总推文量 = 各事件统计区间（开始→结算）的推文合计；命中判定 = 结算时刻价格 > {HIT_THRESHOLD}；",
+                                  style={'marginLeft': '5px'}),
+                        html.Span("最近事件三项 = 窗口内最近一个已结束事件的推文表现。鼠标悬停各卡片名称可查看单项解释。",
                                   style={'marginLeft': '5px'}),
                     ], style={'padding': '8px 12px', 'backgroundColor': '#f8f9fa', 'borderRadius': '4px', 'marginBottom': '10px'}),
                     html.Div(id='insights-kpi-cards', style={'marginBottom': 20}),
 
                     html.Div([
-                        html.H4("📈 推文移动平均值", style={'marginBottom': 10}),
-                        html.Div(id='insights-ma-cards', style={'marginBottom': 15}),
-                    ]),
+                        html.H4("🎯 各区间命中次数", style={'marginBottom': 10}),
+                        html.P("窗口内每个推文区间的累计命中次数，用于快速定位高概率区间",
+                               style={'color': '#6c757d', 'fontSize': '13px', 'marginTop': 0}),
+                        dcc.Graph(id='insights-range-hit-bar', style={'height': '320px'}),
+                        info_block(
+                            how_to_read=f"每根柱子代表一个推文区间（如 105-129），高度为窗口内该区间命中（最终存在价格 > {HIT_THRESHOLD} 的小时）的市场数量，柱顶标注具体次数。",
+                            meaning="柱子越高说明该区间越容易被命中。结合窗口切换可以看出：高概率区间在不同时间跨度下是否稳定，若 30 天与 90 天的高柱一致，说明区间偏好长期稳定。",
+                        )
+                    ], style={'marginBottom': 30}),
 
                     html.Div([
-                        html.H4("🎯 事件-区间命中热力图", style={'marginBottom': 10}),
+                        html.H4("🗺 事件-区间命中热力图", style={'marginBottom': 10}),
                         html.P("横轴为事件（按时间排序），纵轴为推文区间，红色表示命中，灰色表示未命中",
                                style={'color': '#6c757d', 'fontSize': '13px', 'marginTop': 0}),
                         dcc.Graph(id='insights-hit-heatmap', style={'height': '500px'}),

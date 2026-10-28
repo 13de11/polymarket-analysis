@@ -65,7 +65,7 @@ def _build_kpi_cards(series='7d'):
         card("📅", "总事件", stats.get('total_events', 0)),
         card("🐦", "总推文", f"{stats.get('total_tweets', 0):,}"),
         card("🎯", "命中市场", stats.get('hit_count', 0)),
-        card("🔥", "最热区间", stats.get('hot_range', '—')),
+        card("🔥", "最热区间", stats.get('hot_range_label', '—')),
     ], style={
         'display': 'flex',
         'flexWrap': 'wrap',

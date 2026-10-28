@@ -28,6 +28,7 @@ Polymarket_Analysis/
 │       ├── sync_markets.py
 │       ├── sync_prices.py
 │       ├── import_tweets.py
+│       ├── fetch_muskmeter.py   # muskmeter 推文爬虫（小时计数，替代手抄 Excel）
 │       ├── aggregate_prices_tweets.py  # 小时级聚合
 │       ├── build_final_db.py     # 从原始库生成精简库
 │       ├── check_db.py           # 数据库健康检查
@@ -133,8 +134,10 @@ python app_new.py
 3. 价格增量（price_sync_state 记账，已完结市场自动跳过）
    python scripts/data_fetcher/sync_prices.py
 
-4. 导入推文（Excel → DB）
-   python scripts/data_fetcher/import_tweets.py
+4. 导入推文（Excel → DB，增量；Excel 值修正后需 `--full` 重建，否则已存在的假 0 不会被更新）
+   python scripts/data_fetcher/import_tweets.py --full
+   # 或用爬虫直接回填（以 muskmeter 网页为准，只修 0/缺失，不覆盖非零值）：
+   python scripts/data_fetcher/fetch_muskmeter.py --save --fill-only
 
 5. 聚合小时级数据
    python scripts/data_fetcher/aggregate_prices_tweets.py
@@ -367,6 +370,18 @@ line=dict(color=COLOR_PRIMARY)
 | **F5** | 动量修正是递归累积，代码注释说"设计意图" | 实证确认实现**本就是非递归**（每行修正只依赖当行 avg_rate，逐行偏差 0）——系注释误导，已修正注释，行为零变化 ✅已完成 |
 | **F6** | 命中阈值 0.99 硬编码（旧 IN-4 同类） | 参数化 ✅已完成（`stats_loader.HIT_THRESHOLD = 0.99` 单一来源，SQL 4 处 + 页面文案 5 处统一引用，行为零变化） |
 
+### 2026-10-28 批次 ✅ 数据分析中心改造 + 命中口径统一 + muskmeter 爬虫
+
+| 编号 | 内容 |
+|------|------|
+| E5 | `/insights` 总览 Tab 窗口化改造：新增 30/45/60/90 天数据窗口选择器（默认 30d）；KPI 重做为三组九卡（窗口规模 / 命中情况 / 最近事件），字段名带悬停解释；删除移动平均三卡（与推文分析 Tab 重复） |
+| E6 | 新增「各区间命中次数」柱状图（窗口内，0-39 显示为 ＜40）；热力图样式优化（格子间隙 + 命中/未命中悬停文案） |
+| F7 | 命中判定统一为**结算价口径**（结算时刻 end_date 及之前最后一条价格 > 阈值），`stats_loader._LATEST_PRICE_SUBQUERY` 单一来源，总览/热力图/Tab3 直方图三处统一；修复最热区间 `COUNT(*)` 误数小时行的老 bug |
+| F8 | 数据完整性过滤：价格数据未同步到结算时刻的事件不参与数据分析中心统计（避免已结束事件与命中数不一致）；`get_overview_stats` 增加 `window_days` 参数（None=全系列，首页兼容） |
+| T8 | 新增 muskmeter 推文爬虫 `fetch_muskmeter.py`：SSR 页面直接解析（requests 可过 Vercel 检查），时区用 America/New_York（自动夏令时），支持 `--save --fill-only` 保守回填（只修 0/缺失）与 `--check` 对比 |
+
+**口径备注**：muskmeter 不同事件页对同一小时计数可能不一致（当前事件页的上下文列对事件开始日之前的天会丢数据）——爬虫只采事件自身窗口；11-01 美国冬令时后（ET 变 UTC-5）首次运行需人工核对一次时区。
+
 ### 保留项（旧 P2/P3 未重新编号）
 
 | 旧编号 | 问题 |
@@ -392,6 +407,8 @@ line=dict(color=COLOR_PRIMARY)
 |------|------|------|
 | `research-params-store` State 跨页告警 | 在 /backtest 页时 console 出现 nonexistent object 警告 | 无害（suppress_callback_exceptions 未完全吞 State 校验），不影响功能 |
 | Sharpe 为周期内值非年化值 | 数字偏小（如 0.07），不能与传统年化 Sharpe（1~3）直接比 | 设计如此：7 天数据不该年化，衡量的是回测期内每小时信噪比 |
+| muskmeter 事件页数据不一致 | 当前事件页的上下文列（事件开始日之前的天）可能缺数；旧事件页带错误 eventId 会超时 | 已规避：爬虫只采事件自身窗口；历史回填用各事件自己的 start/end（无需 eventId） |
+| import_tweets 增量模式不修正旧值 | `INSERT OR IGNORE` 跳过已存在行，Excel 修正的假 0 不会生效 | 已文档化：Excel 值修正后必须 `--full` 重建，或改用爬虫 fill-only 回填 |
 
 ---
 
@@ -408,6 +425,7 @@ line=dict(color=COLOR_PRIMARY)
 
 - **稳定可用**：观察层（`/`、`/analysis`、`/insights`）、回测模块、策略研究三 Tab、跨页带参闭环（C1 已修）
 - **审计整改**：**全部完成**——第一批（C1/F1/S4）、第二批（S1/F3/E3/E1/F4/F2，E1 暂缓）、第三批（S2/S3/S5/S6/E4/B3/F5/F6）✅（详见整改路线图）
+- **2026-10-28 批次**：✅ 总览窗口化改造（E5/E6）+ 命中结算价口径统一（F7）+ 数据完整性过滤（F8）+ muskmeter 爬虫（T8）
 
 ---
 
