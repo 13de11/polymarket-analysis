@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
 数据健康检查 - 一键打印两个库的关键指标
-用法: python scripts/check_db.py
+用法: python scripts/data_fetcher/check_db.py
 """
 
 import sqlite3
 import sys
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 from config import DB_PATH, LIGHT_DB_PATH
 

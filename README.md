@@ -22,15 +22,15 @@ Polymarket_Analysis/
 │   └── experiments/              # 实验配置（预留）
 │
 ├── scripts/                      # 数据处理脚本
-│   ├── build_final_db.py         # 从原始库生成精简库
-│   ├── check_db.py               # 数据库健康检查
 │   └── data_fetcher/
 │       ├── create_tables.py
-│       ├── fetch_events.py       # 事件抓取（增量回看 15 天）
-│       ├── fetch_markets.py
-│       ├── fetch_prices.py
+│       ├── sync_events.py        # 事件增量（series_id 驱动）
+│       ├── sync_markets.py
+│       ├── sync_prices.py
 │       ├── import_tweets.py
 │       ├── aggregate_prices_tweets.py  # 小时级聚合
+│       ├── build_final_db.py     # 从原始库生成精简库
+│       ├── check_db.py           # 数据库健康检查
 │       └── run_all.py
 │
 ├── src/dash_app/
@@ -124,14 +124,14 @@ python app_new.py
 ## 📊 数据处理流程
 
 ```
-1. 拉事件（增量：回看 15 天，避免状态漏更新）
-   python scripts/data_fetcher/fetch_events.py --tag tweets-markets
+1. 事件增量（series_id 驱动，自动刷新状态）
+   python scripts/data_fetcher/sync_events.py
 
-2. 拉市场（增量：只拉未处理事件）
-   python scripts/data_fetcher/fetch_markets.py
+2. 市场增量（只拉近期/有变化的事件）
+   python scripts/data_fetcher/sync_markets.py
 
-3. 拉价格（从最新时间戳往后）
-   python scripts/data_fetcher/fetch_prices.py
+3. 价格增量（price_sync_state 记账，已完结市场自动跳过）
+   python scripts/data_fetcher/sync_prices.py
 
 4. 导入推文（Excel → DB）
    python scripts/data_fetcher/import_tweets.py
@@ -140,19 +140,16 @@ python app_new.py
    python scripts/data_fetcher/aggregate_prices_tweets.py
 
 6. 生成精简库（Web 用）
-   python scripts/build_final_db.py
+   python scripts/data_fetcher/build_final_db.py
 
 7. 检查数据健康
-   python scripts/check_db.py
+   python scripts/data_fetcher/check_db.py
 ```
 
 **一键全流程**：`python scripts/data_fetcher/run_all.py`
 
-**每月建议**：跑一次**全量刷新**，兜住增量漏掉的状态更新。
-
-```bash
-python scripts/data_fetcher/fetch_events.py --tag tweets-markets --full
-```
+> 同步流程由 `price_sync_state` 表记账，重复运行安全：已完结的市场不再请求，
+> 进行中的市场只拉上次探测点之后的增量。无需定期全量刷新。
 
 ---
 
@@ -178,7 +175,7 @@ find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null
 
 ### 2. 数据库更新
 
-1. 本地跑 `python scripts/build_final_db.py`
+1. 本地跑 `python scripts/data_fetcher/build_final_db.py`
 2. 登录 PythonAnywhere → **Files** → `data/` 目录
 3. **先删** `elon_tweets_analysis.db-wal` 和 `elon_tweets_analysis.db-shm`
 4. 再上传 `elon_tweets_analysis.db`（覆盖）
@@ -281,6 +278,7 @@ render_tab_content             按 active tab 从 store 读，懒渲染（只渲
 
 - 由 `pages/shared/params_panel.py` **schema 驱动生成**
 - 分四步折叠：数据选择 / 观察维度 / 信号参数 / 评价假设
+- 📖 **全部参数的大白话说明文档**：[`docs/回测参数说明.md`](docs/回测参数说明.md)（含定义/通俗解释/调参影响/指标解读）
 
 ---
 

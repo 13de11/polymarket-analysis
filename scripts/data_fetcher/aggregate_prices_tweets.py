@@ -64,16 +64,12 @@ def parse_event_period_from_question(question: str):
 
 
 def get_events(conn, event_slug=None, event_ids=None):
-    """获取需要处理的事件列表"""
+    """获取需要处理的事件列表（近 35 天结束或尚未结束的事件，含活跃事件）"""
     query = """
         SELECT id, slug
         FROM events
         WHERE series_slug IN ('elon-tweets', 'elon-tweets-48h')
-          AND (
-    closed = 1
-    OR (end_date IS NOT NULL AND end_date < datetime('now'))
-)
-          AND start_date >= '2025-11-29'
+          AND (end_date IS NULL OR end_date >= datetime('now', '-35 days'))
     """
     params = []
 
@@ -197,9 +193,11 @@ def main():
         """
         params = [event_id]
         if max_existing_hour is not None:
+            # 回看 2 小时：配合下面的 UPSERT，把上次"半截"的小时格修补完整
+            overlap = max_existing_hour - 7200
             price_query += " AND p.timestamp_unix > ?"
-            params.append(max_existing_hour)
-            print(f"  增量补充模式：只取 timestamp_unix > {max_existing_hour} 的新数据")
+            params.append(overlap)
+            print(f"  增量补充模式：只取 timestamp_unix > {overlap} 的新数据（回看 2h）")
         else:
             print("  全量模式（新事件）：取全部价格数据")
 
@@ -211,6 +209,8 @@ def main():
 
         df_prices['price'] = pd.to_numeric(df_prices['price'], errors='coerce')
         df_prices = df_prices.dropna(subset=['price'])
+        # 显式按时间排序，保证 price_last 取到的是该小时最后一笔
+        df_prices = df_prices.sort_values('timestamp_unix')
 
         if df_prices.empty:
             print("  ⚠️ 新增价格数据全部无效，跳过")
@@ -249,17 +249,26 @@ def main():
         matched = df_grouped['tweet_count'].notna().sum()
         print(f"  匹配到推文的小时数: {matched} / {len(df_grouped)}")
 
-        # 批量插入
+        # UPSERT：新数据覆盖旧聚合（价格只增不减，重算值 ⊇ 旧值）；
+        # tweet_count 为 NULL 时不覆盖旧值（推文可能还没导入）
         data_tuples = df_grouped.to_records(index=False).tolist()
         cursor.executemany(f'''
-            INSERT OR IGNORE INTO {TABLE_NAME}
+            INSERT INTO {TABLE_NAME}
             (event_slug, market_id, hour_start_utc, tweet_count, price_last, price_avg, price_std, price_max, price_min)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(market_id, hour_start_utc) DO UPDATE SET
+                event_slug = excluded.event_slug,
+                tweet_count = COALESCE(excluded.tweet_count, {TABLE_NAME}.tweet_count),
+                price_last = excluded.price_last,
+                price_avg = excluded.price_avg,
+                price_std = excluded.price_std,
+                price_max = excluded.price_max,
+                price_min = excluded.price_min
         ''', data_tuples)
         conn.commit()
         inserted = cursor.rowcount
         total_records += inserted
-        print(f"  插入 {inserted} 条新记录（跳过重复）")
+        print(f"  插入/更新 {inserted} 条记录")
 
         time.sleep(0.1)
 

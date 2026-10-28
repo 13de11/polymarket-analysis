@@ -11,7 +11,7 @@ import sys
 import shutil
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 from config import DB_PATH, LIGHT_DB_PATH
 
 # 源数据库连接

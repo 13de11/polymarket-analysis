@@ -34,6 +34,11 @@ ABNORMAL_TWEET_COUNT = 805
 
 
 def main():
+    import argparse
+    parser = argparse.ArgumentParser(description="推文宽表导入（增量）")
+    parser.add_argument('--full', action='store_true', help='删除旧表全量重建（默认增量，按 original_time 去重）')
+    args = parser.parse_args()
+
     if not EXCEL_PATH.exists():
         print(f"❌ 文件不存在: {EXCEL_PATH}")
         print("   请确认文件路径是否正确，或修改脚本中的 EXCEL_PATH")
@@ -138,14 +143,16 @@ def main():
     df_long.to_excel(OUTPUT_EXCEL, index=False)
     print(f"\n✅ Excel 备份已保存: {OUTPUT_EXCEL}")
 
-    # ---------- 创建数据库表并导入 ----------
+    # ---------- 创建数据库表并导入（增量：UNIQUE(original_time) 去重，不删旧表） ----------
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
-    # 删除旧表，新建
-    cursor.execute(f"DROP TABLE IF EXISTS {TABLE_NAME}")
+    if args.full:
+        cursor.execute(f"DROP TABLE IF EXISTS {TABLE_NAME}")
+        print(f"🗑️ --full 模式：已删除旧表 {TABLE_NAME}")
+
     cursor.execute(f'''
-        CREATE TABLE {TABLE_NAME} (
+        CREATE TABLE IF NOT EXISTS {TABLE_NAME} (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             original_time TEXT NOT NULL,
             utc_time TEXT NOT NULL,
@@ -154,18 +161,18 @@ def main():
             UNIQUE(original_time)
         )
     ''')
-    cursor.execute(f"CREATE INDEX idx_{TABLE_NAME}_unix ON {TABLE_NAME}(timestamp_unix_utc)")
-    cursor.execute(f"CREATE INDEX idx_{TABLE_NAME}_utc_time ON {TABLE_NAME}(utc_time)")
+    cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{TABLE_NAME}_unix ON {TABLE_NAME}(timestamp_unix_utc)")
+    cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{TABLE_NAME}_utc_time ON {TABLE_NAME}(utc_time)")
 
-    # 批量插入
+    # 批量插入（重复的 original_time 自动跳过）
     inserted = 0
     for _, row in df_long.iterrows():
         cursor.execute(f'''
-            INSERT INTO {TABLE_NAME}
+            INSERT OR IGNORE INTO {TABLE_NAME}
             (original_time, utc_time, timestamp_unix_utc, tweet_count)
             VALUES (?, ?, ?, ?)
         ''', (row['original_time'], row['utc_time'], row['timestamp_unix_utc'], row['tweet_count']))
-        inserted += 1
+        inserted += cursor.rowcount
 
     conn.commit()
 
