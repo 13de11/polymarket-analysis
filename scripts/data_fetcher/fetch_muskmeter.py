@@ -417,7 +417,7 @@ def main():
     parser.add_argument('--push', action='store_true',
                         help='把解析出的小时推文推送到 PA 线上库'
                              '（POST /collect/tweets，需 --key 或环境变量 COLLECT_KEY）')
-    parser.add_argument('--push-url', default='http://13de11.pythonanywhere.com/collect/tweets',
+    parser.add_argument('--push-url', default='https://13de11.pythonanywhere.com/collect/tweets',
                         help='PA 推送端点地址')
     parser.add_argument('--key', default=os.environ.get('COLLECT_KEY', ''),
                         help='采集端点秘钥（也可用环境变量 COLLECT_KEY）')

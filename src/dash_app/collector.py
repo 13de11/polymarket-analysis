@@ -34,6 +34,10 @@ from src.dash_app.utils.data_loader import DB_PATH
 CLOB_BASE = "https://clob.polymarket.com"
 LOOKBACK_SECONDS = 2 * 3600   # 每次回看 2 小时（上一个小时重算，保证整点后数据完整）
 RETRY = 3
+# 端点总耗时上限：超过即返回已采部分。PA 免费版 Web 是单 worker，
+# 若网络不通时每个市场磨蹭 60 秒 × 70 个市场会把 worker 拖死一个多小时，
+# 后续所有请求（包括站点页面）都会排队。
+COLLECT_DEADLINE_SECONDS = 240
 
 # PA 免费版 Web 应用进程出网必须走 PA 内部代理（Bash console 自动配置了，
 # Web 应用进程没有——不配置时连不上 Polymarket，表现为端点长时间无响应）。
@@ -64,7 +68,7 @@ def _http_get_json(url: str, params: dict):
     """GET JSON，复用项目的 http_client（带重试 + SSL 处理，本地代理环境已验证）"""
     try:
         from scripts.data_fetcher.http_client import get_json
-        return get_json(url, params, retries=2, retry_delay=1.0, timeout=30)
+        return get_json(url, params, retries=2, retry_delay=1.0, timeout=20)
     except Exception:
         return None
 
@@ -128,18 +132,31 @@ def collect_prices(limit_markets: int = None, backfill_hours: int = 2) -> dict:
         start_ts = now - backfill_hours * 3600
         hours_written = errors = 0
         no_token = 0
+        no_data = 0
+        markets_done = 0
+        timed_out = False
+        deadline = time.time() + COLLECT_DEADLINE_SECONDS
 
         for market_id, slug, token_id in markets:
+            if time.time() > deadline:
+                timed_out = True
+                break
             if not token_id:
                 no_token += 1
                 continue
+            markets_done += 1
             data = _http_get_json(f"{CLOB_BASE}/prices-history", {
                 "market": token_id, "fidelity": 1,
                 "startTs": start_ts, "endTs": now,
             })
-            history = (data or {}).get("history", []) or []
-            if not history:
+            if data is None:
+                # 请求真失败（网络/超时）
                 errors += 1
+                continue
+            history = data.get("history", []) or []
+            if not history:
+                # 请求成功但回看窗口内无成交（冷门市场的正常情况，不算错误）
+                no_data += 1
                 continue
 
             # 按小时分桶：price_last = 该小时最后一条，price_avg = 均值
@@ -168,10 +185,14 @@ def collect_prices(limit_markets: int = None, backfill_hours: int = 2) -> dict:
         return {
             "ok": True,
             "active_events": len(event_ids),
-            "markets": len(markets),
+            "markets_total": len(markets),
+            "markets_done": markets_done,
             "hours_written": hours_written,
             "no_token": no_token,
+            "no_data": no_data,
             "fetch_errors": errors,
+            "timed_out": timed_out,
+            "note": "已到单次时限，剩余市场下一轮自动补齐" if timed_out else None,
         }
     finally:
         conn.close()
