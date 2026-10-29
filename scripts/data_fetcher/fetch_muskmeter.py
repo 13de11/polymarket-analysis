@@ -56,15 +56,47 @@ HEADERS = {
 }
 
 
-def fetch_html(url: str) -> str:
-    """抓取页面。Vercel 反爬（429/Security Checkpoint）时给出可读报错"""
+def fetch_html(url):
+    """抓取页面：先直连，被 Vercel 安全检查拦截时自动降级到真实浏览器抓取。
+
+    浏览器路径需要 playwright（pip install playwright && playwright install chromium），
+    GitHub Actions 环境会安装；本地直连通常成功，用不到它。
+    换请求头没有用——Vercel 拦的是数据中心 IP 的信誉，不是请求头。
+    """
     resp = requests.get(url, headers=HEADERS, timeout=30)
     if resp.status_code == 429 or "Security Checkpoint" in resp.text:
-        raise RuntimeError(
-            "被 Vercel 安全检查拦截（429）。可能是请求过频：等待几分钟再试，"
-            "或降低采集频率。若 PA 服务器 IP 长期被拦，需改用其他方案（见 README 备注）")
+        print("  ⚠️ 直连被 Vercel 安全检查拦截，尝试真实浏览器抓取…")
+        try:
+            return fetch_html_browser(url)
+        except ImportError:
+            raise RuntimeError(
+                "被 Vercel 安全检查拦截（429），且未安装 playwright 无法使用浏览器抓取。"
+                "GitHub Actions 环境请确认 workflow 里已安装 playwright + chromium")
+        except Exception as e:
+            raise RuntimeError(f"直连被拦且浏览器抓取也失败: {e}")
     resp.raise_for_status()
     return resp.text
+
+
+def fetch_html_browser(url):
+    """Playwright 真实浏览器抓取：真实 Chromium 会自动执行 Vercel 挑战 JS 并通过"""
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        try:
+            page = browser.new_page(user_agent=HEADERS["User-Agent"])
+            page.goto(url, wait_until="domcontentloaded", timeout=60000)
+            # 检查点页会自动执行挑战 JS 后放行；循环等待真实热力图出现（最多 60 秒）
+            deadline = time.time() + 60
+            while time.time() < deadline:
+                html = page.content()
+                if "Security Checkpoint" not in html and "heatmap" in html:
+                    return html
+                page.wait_for_timeout(2000)
+            raise RuntimeError("等待 60 秒仍未通过安全检查（页面未出现热力图）")
+        finally:
+            browser.close()
 
 
 def parse_heatmap(html: str, end_ts: int):
