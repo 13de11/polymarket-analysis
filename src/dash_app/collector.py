@@ -35,6 +35,15 @@ CLOB_BASE = "https://clob.polymarket.com"
 LOOKBACK_SECONDS = 2 * 3600   # 每次回看 2 小时（上一个小时重算，保证整点后数据完整）
 RETRY = 3
 
+# PA 免费版 Web 应用进程出网必须走 PA 内部代理（Bash console 自动配置了，
+# Web 应用进程没有——不配置时连不上 Polymarket，表现为端点长时间无响应）。
+# 在 WSGI 文件里设置：os.environ['COLLECT_PROXY'] = 'http://proxy.server:3128'
+# 本地环境不设置即可（不影响直连）。
+_collect_proxy = os.environ.get("COLLECT_PROXY", "")
+if _collect_proxy:
+    os.environ.setdefault("HTTP_PROXY", _collect_proxy)
+    os.environ.setdefault("HTTPS_PROXY", _collect_proxy)
+
 
 def _connect():
     conn = sqlite3.connect(DB_PATH, timeout=30)
@@ -139,6 +148,9 @@ def collect_prices(limit_markets: int = None, backfill_hours: int = 2) -> dict:
                     "(market_id, hour_start_utc, price_last, price_avg) VALUES (?, ?, ?, ?)",
                     (market_id, hour_start, price_last, price_avg))
                 hours_written += 1
+            # 逐市场提交：请求若被 PA 超时掐断，已采的数据也已落库，
+            # 下一轮（lookback 重叠）会自动补齐剩余市场
+            conn.commit()
 
         conn.commit()
         return {
