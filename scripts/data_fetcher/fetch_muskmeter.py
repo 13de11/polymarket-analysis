@@ -37,6 +37,12 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 DEFAULT_BASE = "https://www.muskmeter.live/"
 
+# 滚动窗口最边缘（约 15 天前）的小时会被网站清零显示（实测 10-14 00:00：
+# 截图时代 12 条，15 天后的滚动页显示 0）。只推送/保存 8 天内的数据：
+# 覆盖所有活跃事件窗口（7d 系列）+ 余量，且远在失真边缘之内；
+# 更老的历史由本地周更负责。
+MAX_PUSH_AGE_SECONDS = 8 * 86400
+
 def _default_url() -> str:
     """默认抓"最近 7 天 → 现在"的窗口（不带 eventId，muskmeter 支持任意时间窗口，
     已实测）。自动化场景下窗口随时间自动滑动，永不失效。"""
@@ -448,6 +454,14 @@ def main():
         print(f"✅ 抓取成功，{len(html):,} 字符")
 
     title, records = parse_heatmap(html, end_ts)
+
+    # 丢弃超过 8 天的边缘小时（滚动窗口最边缘会被网站清零显示，防止污染历史）
+    cutoff = time.time() - MAX_PUSH_AGE_SECONDS
+    dropped = sum(1 for r in records if not r['future'] and r['ts_utc'] < cutoff)
+    records = [r for r in records if r['future'] or r['ts_utc'] >= cutoff]
+    if dropped:
+        print(f"  ⚠️ 丢弃 {dropped} 条超过 8 天的边缘小时（滚动页最边缘被网站清零显示）")
+
     print(f"\n📌 页面事件: {title}")
     print(f"📊 解析出 {len(records)} 条 (日期×小时) 记录")
 
