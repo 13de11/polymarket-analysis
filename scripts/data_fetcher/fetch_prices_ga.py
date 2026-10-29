@@ -72,8 +72,15 @@ def main():
     r = s.get(f"{args.base_url}/collect/tokens",
               headers=auth_headers, timeout=60)
     if r.status_code != 200:
-        raise SystemExit(f"❌ 拿 token 失败: HTTP {r.status_code} {r.text[:200]}")
-    tokens = r.json().get("tokens", [])
+        raise SystemExit(
+            f"❌ 拿 token 失败: HTTP {r.status_code}，响应开头: {r.text[:200]!r}\n"
+            "   常见原因：PA 还没 git pull 最新代码（端点不存在）或秘钥不对")
+    try:
+        tokens = r.json().get("tokens", [])
+    except ValueError:
+        raise SystemExit(f"❌ 响应不是 JSON: {r.text[:200]!r}")
+    if args.limit:
+        tokens = tokens[:args.limit]
     if args.limit:
         tokens = tokens[:args.limit]
     if not tokens:
