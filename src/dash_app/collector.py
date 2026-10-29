@@ -100,11 +100,23 @@ def collect_prices(limit_markets: int = None, backfill_hours: int = 2) -> dict:
             return {"ok": True, "message": "无活跃事件", "hours_written": 0}
 
         placeholders = ",".join(["?"] * len(event_ids))
+        # 排序：按最近已知价格降序（"在打"的热门市场优先）。
+        # 全量采集时若中途被超时掐断，最重要的市场已先采完；
+        # limit_markets 调试时选中的也是最有代表性的市场。
         query = """
             SELECT m.id, m.slug, t.token_id
             FROM markets m
             JOIN market_tokens t ON t.market_id = m.id
             WHERE m.event_id IN (%s)
+            ORDER BY (
+                SELECT price_last FROM price_hourly p
+                WHERE p.market_id = m.id
+                ORDER BY hour_start_utc DESC LIMIT 1
+            ) IS NULL, (
+                SELECT price_last FROM price_hourly p
+                WHERE p.market_id = m.id
+                ORDER BY hour_start_utc DESC LIMIT 1
+            ) DESC
         """ % placeholders
         if limit_markets:
             query += f" LIMIT {int(limit_markets)}"
