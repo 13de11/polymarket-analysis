@@ -72,6 +72,30 @@ def parse_tweet_range(slug: str) -> tuple:
     except:
         return None, None, 0
 
+
+def derive_game_start(slug: str) -> str | None:
+    """从事件 slug 推导 game_start_time（slug 起始日 16:00 UTC）
+
+    部分事件同步时比赛窗口尚未开始，API 的 gameStartTime 为 null 且增量
+    同步不会回填。实测该系列所有已知 game_start 均等于 slug 起始日 16:00 UTC
+    （5/5 验证一致），以此作为兜底值。
+    """
+    import re
+    from datetime import datetime, timezone
+    month_map = {'january': 1, 'february': 2, 'march': 3, 'april': 4,
+                 'may': 5, 'june': 6, 'july': 7, 'august': 8,
+                 'september': 9, 'october': 10, 'november': 11, 'december': 12}
+    m = re.search(r'elon-musk-of-tweets-([a-z]+)-(\d{1,2})-([a-z]+)-(\d{1,2})', slug)
+    if not m:
+        return None
+    y = re.search(r'-(\d{4})$', slug)
+    year = int(y.group(1)) if y else 2026
+    month = month_map.get(m.group(1))
+    if not month:
+        return None
+    dt = datetime(year, month, int(m.group(2)), 16, 0, tzinfo=timezone.utc)
+    return dt.strftime('%Y-%m-%d %H:%M:%S+00')
+
 markets = src_conn.execute(f"""
     SELECT id, event_id, slug, game_start_time
     FROM markets
@@ -118,7 +142,11 @@ for e in events:
             "SELECT game_start_time FROM markets WHERE id = ?",
             (first_market['id'],)
         ).fetchone()
-        event_game_start[e['id']] = gst['game_start_time'] if gst else None
+        gs = gst['game_start_time'] if gst else None
+        if not gs:
+            # 同步早于比赛窗口开始时 API 的 gameStartTime 为 null，用 slug 推导兜底
+            gs = derive_game_start(e['slug'])
+        event_game_start[e['id']] = gs
 
 # ============================================================
 # 4. 创建目标表结构
@@ -126,10 +154,12 @@ for e in events:
 print("\n📌 步骤 4: 创建表结构")
 
 # 删除旧表（如果存在）
+# 删除旧表（如果存在）
 tgt_conn.execute("DROP TABLE IF EXISTS events")
 tgt_conn.execute("DROP TABLE IF EXISTS markets")
 tgt_conn.execute("DROP TABLE IF EXISTS price_hourly")
 tgt_conn.execute("DROP TABLE IF EXISTS tweet_hourly")
+tgt_conn.execute("DROP TABLE IF EXISTS market_tokens")  # ← 补这一行
 
 # 创建 events 表
 tgt_conn.execute("""

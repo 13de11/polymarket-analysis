@@ -63,9 +63,25 @@ def get_series_condition(series: str = '7d', table_alias: str = 'e') -> str:
            f"{table_alias}.slug LIKE 'elon-musk-of-tweets%'"
 
 def run_query(query: str, params=()) -> pd.DataFrame:
-    """执行 SQL 查询并返回 DataFrame（复用连接）"""
+    """执行 SQL 查询并返回 DataFrame（复用连接）
+
+    注意：numpy 标量（如 price_df['hour_start_utc'].min() 的返回值）传给
+    sqlite3 会被绑定成 BLOB 而非 INTEGER，导致条件永假、静默返回 0 行，
+    因此这里统一转成 Python 原生标量。
+    """
+    import numpy as np
+    clean = []
+    for p in params:
+        if isinstance(p, np.integer):
+            clean.append(int(p))
+        elif isinstance(p, np.floating):
+            clean.append(float(p))
+        elif isinstance(p, pd.Timestamp):
+            clean.append(p.isoformat())
+        else:
+            clean.append(p)
     conn = get_connection()
-    df = pd.read_sql_query(query, conn, params=params)
+    df = pd.read_sql_query(query, conn, params=tuple(clean))
     return df
 
 
@@ -302,10 +318,10 @@ def _get_tweet_data_cached(event_id: str, start_ts, end_ts,
         params.append(int(end_ts))
     if start_ts:
         query += " AND timestamp_unix_utc >= ?"
-        params.append(start_ts)
+        params.append(int(start_ts))
     if end_ts:
         query += " AND timestamp_unix_utc < ?"
-        params.append(end_ts)
+        params.append(int(end_ts))
     query += " ORDER BY timestamp_unix_utc"
     df = run_query(query, tuple(params))
     if not df.empty:

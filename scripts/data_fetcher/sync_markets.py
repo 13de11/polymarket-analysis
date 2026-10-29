@@ -98,7 +98,7 @@ def upsert_markets(conn: sqlite3.Connection, event_id: str, markets: list[dict])
             end_date = excluded.end_date,
             start_date = excluded.start_date,
             tags = excluded.tags,
-            game_start_time = excluded.game_start_time,
+            game_start_time = COALESCE(excluded.game_start_time, markets.game_start_time),
             updated_at = excluded.updated_at
     ''', rows)
     conn.commit()
