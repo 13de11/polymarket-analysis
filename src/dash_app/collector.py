@@ -199,6 +199,18 @@ def upsert_tweets(hours: list) -> int:
 def register_collect_routes(server):
     """把采集端点挂到 Dash 底层的 Flask server 上"""
 
+    @server.route("/collect/debug")
+    def _collect_debug():
+        if not _authorized():
+            return jsonify({"ok": False, "error": "unauthorized"}), 404
+        return jsonify({
+            "COLLECT_KEY_set": bool(os.environ.get("COLLECT_KEY")),
+            "COLLECT_PROXY": os.environ.get("COLLECT_PROXY", "(未设置)"),
+            "HTTP_PROXY": os.environ.get("HTTP_PROXY", "(未设置)"),
+            "HTTPS_PROXY": os.environ.get("HTTPS_PROXY", "(未设置)"),
+            "database": str(DB_PATH),
+        })
+
     @server.route("/collect/prices")
     def _collect_prices():
         if not _authorized():
