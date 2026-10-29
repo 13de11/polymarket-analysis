@@ -107,7 +107,7 @@ def _event_tweet_stats(event_row) -> dict:
     return {'total': total, 'peak': peak, 'avg_per_hour': round(total / duration_h, 1)}
 
 
-@lru_cache(maxsize=32)
+@lru_cache(maxsize=64)
 def _get_overview_stats_cached(series: str, window_days, cache_key: str) -> dict:
     """内部：带缓存的窗口化总览统计。cache_key 为当日日期，每日自动失效
 
@@ -223,7 +223,8 @@ def get_overview_stats(series: str = '7d', window_days=None) -> dict:
     结果按天缓存，当日重复访问不重复查库。
     """
     key = None if window_days in (None, 'all') else int(window_days)
-    return dict(_get_overview_stats_cached(series, key, date.today().isoformat()))
+    from datetime import datetime
+    return dict(_get_overview_stats_cached(series, key, datetime.now().strftime('%Y-%m-%d %H')))
 
 
 def get_hit_distribution(series: str = '7d', window_days=None) -> pd.DataFrame:

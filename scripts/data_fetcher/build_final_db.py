@@ -173,6 +173,15 @@ tgt_conn.execute("""
     )
 """)
 
+# 创建 market_tokens 表（线上采集器用：市场 slug → CLOB token 映射，随库携带，
+# 使 PA 上的价格采集不依赖 Gamma API——免费版外网白名单不放行 gamma-api）
+tgt_conn.execute("""
+    CREATE TABLE market_tokens (
+        market_id TEXT PRIMARY KEY,
+        token_id TEXT
+    )
+""")
+
 print("   ✅ 表结构创建完成")
 
 # ============================================================
@@ -209,6 +218,22 @@ for m in markets_parsed:
         m['is_plus']
     ))
 print(f"   ✅ 写入 {len(markets_parsed)} 条市场记录")
+
+# ============================================================
+# 6.5 写入 market_tokens（线上采集器的 token 映射）
+# ============================================================
+print("\n📌 步骤 6.5: 写入 market_tokens")
+token_rows = src_conn.execute(f"""
+    SELECT id, yes_token_id
+    FROM markets
+    WHERE id IN ({market_placeholders})
+      AND yes_token_id IS NOT NULL AND yes_token_id != ''
+""", market_ids).fetchall()
+for t in token_rows:
+    tgt_conn.execute(
+        "INSERT OR REPLACE INTO market_tokens (market_id, token_id) VALUES (?, ?)",
+        (t['id'], t['yes_token_id']))
+print(f"   ✅ 写入 {len(token_rows)} 条 token 映射")
 
 # ============================================================
 # 7. 写入 price_hourly 数据

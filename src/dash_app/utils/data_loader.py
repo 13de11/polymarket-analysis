@@ -70,15 +70,15 @@ def run_query(query: str, params=()) -> pd.DataFrame:
 
 
 from functools import lru_cache
-from datetime import date
+from datetime import date, datetime
 
 
 def _daily_cache_key() -> str:
-    """每日自动失效的 cache key。数据更新后第二天自动生效。"""
-    return date.today().isoformat()
+    """小时级 cache key：数据改为线上每小时采集后，网页最多延迟 1 小时可见。"""
+    return datetime.now().strftime("%Y-%m-%d %H")
 
 
-@lru_cache(maxsize=8)
+@lru_cache(maxsize=64)
 def _get_elon_tweet_events_cached(series: str, cache_key: str):
     """内部：带缓存的查询。cache_key 用于失效"""
     from datetime import datetime, timezone
@@ -132,8 +132,7 @@ def get_elon_tweet_events(series: str = '7d'):
 
     缓存 key 包含日期（每天自动失效一次），避免数据更新后不刷新。
     """
-    from datetime import date
-    cache_key = date.today().isoformat()
+    cache_key = _daily_cache_key()
     cached = _get_elon_tweet_events_cached(series, cache_key)
     # 返回副本，避免调用方修改缓存
     return cached.copy()
@@ -191,7 +190,7 @@ def get_target_market(event_id: str):
     return target.to_dict()
 
 
-@lru_cache(maxsize=8)
+@lru_cache(maxsize=64)
 def _get_target_markets_batch_cached(event_ids_tuple: tuple, cache_key: str) -> dict:
     """内部：带缓存的批量查询（event_ids_tuple 用于哈希）"""
     event_ids = list(event_ids_tuple)
@@ -245,8 +244,7 @@ def get_target_markets_batch(event_ids: list) -> dict:
     if not event_ids:
         return {}
 
-    from datetime import date
-    cache_key = date.today().isoformat()
+    cache_key = _daily_cache_key()
     ids_tuple = tuple(sorted(event_ids))
     cached = _get_target_markets_batch_cached(ids_tuple, cache_key)
     return dict(cached)

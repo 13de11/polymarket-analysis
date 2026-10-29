@@ -139,6 +139,10 @@ def highlight_nav(pathname):
 
 # 注意：backtest / research 的回调均在 import 时通过 @callback 自动注册
 
+# 线上数据采集端点（/collect/prices、/collect/tweets，需环境变量 COLLECT_KEY）
+from src.dash_app.collector import register_collect_routes
+register_collect_routes(server)
+
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=8050)

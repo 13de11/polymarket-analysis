@@ -22,7 +22,9 @@ muskmeter.live 爬虫（原型阶段：抓取 + 解析 + 打印/校验，不写�
 """
 
 import sys
+import os
 import re
+import time
 import argparse
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -33,8 +35,14 @@ import requests
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-DEFAULT_URL = ("https://www.muskmeter.live/"
-               "?start=1792771200&end=1793376000&eventId=1221575&eventType=weekly&source=3")
+DEFAULT_BASE = "https://www.muskmeter.live/"
+
+def _default_url() -> str:
+    """默认抓"最近 7 天 → 现在"的窗口（不带 eventId，muskmeter 支持任意时间窗口，
+    已实测）。自动化场景下窗口随时间自动滑动，永不失效。"""
+    now = int(time.time())
+    return (f"{DEFAULT_BASE}?start={now - 7 * 86400}&end={now}"
+            "&eventType=weekly&source=3")
 
 # 页面矩阵时区：美东。用 IANA 时区名而非固定 -4，自动处理冬令时切换
 PAGE_TZ = "America/New_York"
@@ -62,6 +70,9 @@ def fetch_html(url: str) -> str:
 def parse_heatmap(html: str, end_ts: int):
     """解析小时 × 日期矩阵
 
+    页面上可能有多个 meter 的热力图（mojometers 系列组件），按 heatmap 分块，
+    取含完整小时行（≥20 行）的推文主表。
+
     返回 (title, records):
       title: 页面事件标题，如 'Elon Musk # tweets October 23 - October 30, 2026?'
       records: [{date_et: 'YYYY-MM-DD', hour: 0..23, count: int|None, ts_utc: int, future: bool}]
@@ -69,33 +80,56 @@ def parse_heatmap(html: str, end_ts: int):
     from zoneinfo import ZoneInfo
     tz = ZoneInfo(PAGE_TZ)
 
-    # ---- 日期表头（只有 周几 + 日号，月份需要倒推） ----
-    heads = re.findall(
-        r'day-name svelte-[\w-]+">([A-Za-z]{3})</div>\s*'
-        r'<div class="day-number svelte-[\w-]+">(\d+)<', html)
-    if not heads:
-        raise RuntimeError("未找到日期表头，页面结构可能已变化")
+    day_header_re = (r'day-name svelte-[\w-]+">([A-Za-z]{3})</div>\s*'
+                     r'<div class="day-number svelte-[\w-]+">(\d+)<')
+
+    # ---- 按 heatmap 分块，选小时行最全的块（推文主表） ----
+    best_block = None
+    for block in html.split('<div class="heatmap')[1:]:
+        heads = re.findall(day_header_re, block)
+        hour_rows = len(re.findall(r'hour-label svelte-[\w-]+">\d{2}:\d{2}<', block))
+        if heads and hour_rows >= 20 and (best_block is None or hour_rows > best_block[1]):
+            best_block = (heads, hour_rows, block)
+    if best_block is None:
+        raise RuntimeError("未找到推文热力图，页面结构可能已变化")
+    heads, hour_rows_found, block = best_block
     n_days = len(heads)
 
-    # 最后一列 = end 参数当天（美东日期），据此倒推所有列日期，并用周几做交叉校验
+    # 末列锚点推断：实测规则是 end 参数的 UTC 日期（滚动窗口 end=now 时页面会
+    # 包含"今天"整列），但为健壮起见依次尝试多个锚点，取能使日号序列自洽的那个
+    end_utc = datetime.fromtimestamp(end_ts, tz=timezone.utc).date()
+    end_et = datetime.fromtimestamp(end_ts, tz=tz).date()
+    today_et = datetime.now(tz).date()
+    candidates = []
+    for cand in (end_utc, end_et, today_et):
+        if cand not in candidates:
+            candidates.append(cand)
+
+    days = None
+    for anchor in candidates:
+        cand_days = [anchor - timedelta(days=n_days - 1 - k) for k in range(n_days)]
+        if all(d.day == int(num) for (name, num), d in zip(heads, cand_days)):
+            days = cand_days
+            break
+    if days is None:
+        raise RuntimeError(
+            "日期倒推校验失败：所有锚点（end 的 UTC/ET 日期、今天）都无法对齐表头日号，"
+            "页面列布局可能已变化，需要调整推断逻辑")
+
+    # 星期仅警告不报错（实测网站对窗口首列的星期标注偶有 bug）
     weekday_map = {'Mon': 0, 'Tue': 1, 'Wed': 2, 'Thu': 3, 'Fri': 4, 'Sat': 5, 'Sun': 6}
-    end_dt = datetime.fromtimestamp(end_ts, tz=tz).date()
-    days = []
-    for k, (name, num) in enumerate(heads):
-        d = end_dt - timedelta(days=n_days - 1 - k)
-        if weekday_map.get(name) != d.weekday() or d.day != int(num):
-            raise RuntimeError(
-                f"日期倒推校验失败：表头 {name} {num} vs 计算 {d}（%a）。"
-                f"页面列布局可能不是 [end-7天, end]，需要调整推断逻辑")
-        days.append(d)
+    for (name, _), d in zip(heads, days):
+        if weekday_map.get(name) != d.weekday():
+            print(f"⚠️ 星期标注与推算不符（表头 {name} {d.day} 号，实际 {d}），按日号倒推继续")
+            break
 
     # ---- 页面事件标题 ----
     m = re.search(r'>([^<]*[Tt]weets[^<]{0,60})<', html)
     title = m.group(1).strip() if m else "(未找到事件标题)"
 
-    # ---- 小时行 ----
+    # ---- 小时行（仅限主表块内，避免混入其他 meter 的数据） ----
     # 按 hour-label 切分；只保留 HH:MM 形式（排除 Total/Trend/空表头）
-    parts = re.split(r'hour-label svelte-[\w-]+">', html)
+    parts = re.split(r'hour-label svelte-[\w-]+">', block)
     now_utc = datetime.now(tz=None).astimezone().timestamp()
 
     records = []
@@ -266,18 +300,38 @@ def save_to_db(records, fill_only=True, apply=False):
 
 def main():
     parser = argparse.ArgumentParser(description="muskmeter 推文小时计数爬虫")
-    parser.add_argument('--url', default=DEFAULT_URL, help='完整页面 URL')
+    parser.add_argument('--url', default=None,
+                        help='完整页面 URL（不传则用 start/end 或默认最近 7 天窗口）')
+    parser.add_argument('--start', type=int, help='窗口起点 unix 时间戳')
+    parser.add_argument('--end', type=int, help='窗口终点 unix 时间戳（默认=现在）')
     parser.add_argument('--html', help='离线解析本地保存的 HTML 文件（不联网）')
     parser.add_argument('--save', action='store_true',
                         help='把差异写回本地库（默认只打印差异）')
     parser.add_argument('--fill-only', action='store_true',
                         help='配合 --save：保守回填，只写本地为 0/缺失的格子，'
                              '不覆盖已确认的非零值（推荐，muskmeter 会修订历史）')
+    parser.add_argument('--push', action='store_true',
+                        help='把解析出的小时推文推送到 PA 线上库'
+                             '（POST /collect/tweets，需 --key 或环境变量 COLLECT_KEY）')
+    parser.add_argument('--push-url', default='http://13de11.pythonanywhere.com/collect/tweets',
+                        help='PA 推送端点地址')
+    parser.add_argument('--key', default=os.environ.get('COLLECT_KEY', ''),
+                        help='采集端点秘钥（也可用环境变量 COLLECT_KEY）')
     parser.add_argument('--check', action='store_true', help='仅对比汇总，不列明细')
     args = parser.parse_args()
 
+    # 确定 URL：--url 优先，其次 --start/--end 拼接，都没传用默认滚动窗口
+    if args.url:
+        url = args.url
+    elif args.start:
+        end = args.end or int(time.time())
+        url = (f"{DEFAULT_BASE}?start={args.start}&end={end}"
+               "&eventType=weekly&source=3")
+    else:
+        url = _default_url()
+
     # 从 URL 提取 end 参数（用于日期倒推）
-    m = re.search(r'[?&]end=(\d+)', args.url)
+    m = re.search(r'[?&]end=(\d+)', url)
     if not m:
         raise SystemExit("URL 中缺少 end 参数")
     end_ts = int(m.group(1))
@@ -285,8 +339,8 @@ def main():
     if args.html:
         html = Path(args.html).read_text(encoding='utf-8')
     else:
-        print(f"🌐 抓取: {args.url}")
-        html = fetch_html(args.url)
+        print(f"🌐 抓取: {url}")
+        html = fetch_html(url)
         print(f"✅ 抓取成功，{len(html):,} 字符")
 
     title, records = parse_heatmap(html, end_ts)
@@ -298,16 +352,33 @@ def main():
             else '覆盖式（网页数据为准）'
         print(f"\n=== 回填本地库 · {mode} ===")
         save_to_db(records, fill_only=args.fill_only, apply=True)
-    elif args.check:
-        check_against_db(records, summary_only=True)
-    else:
-        print_matrix(records)
-        mode = '保守回填（fill-only，只修 0/缺失）' if args.fill_only \
-            else '覆盖式（网页数据为准）'
-        print(f"\n=== 回填预览 · {mode}（未写库） ===")
-        save_to_db(records, fill_only=args.fill_only, apply=False)
-        print("\n(确认无误后加 --save 执行)" if args.fill_only else
-              "\n(覆盖式会改写 muskmeter 已修订的历史值，建议改用 --save --fill-only)")
+
+    if args.push:
+        # 推送到 PA 线上库：只推过去时间且有值的小时
+        hours = [[r['ts_utc'], r['count']] for r in records
+                 if not r['future'] and r['count'] is not None]
+        if not args.key:
+            raise SystemExit("❌ 缺少秘钥：--key 或环境变量 COLLECT_KEY")
+        import requests
+        print(f"\n=== 推送到线上（{args.push_url}），共 {len(hours)} 小时 ===")
+        resp = requests.post(
+            args.push_url,
+            json={'hours': hours},
+            headers={'X-Collect-Key': args.key},
+            timeout=60)
+        print(f"HTTP {resp.status_code}: {resp.text[:200]}")
+
+    if not args.save and not args.push:
+        if args.check:
+            check_against_db(records, summary_only=True)
+        else:
+            print_matrix(records)
+            mode = '保守回填（fill-only，只修 0/缺失）' if args.fill_only \
+                else '覆盖式（网页数据为准）'
+            print(f"\n=== 回填预览 · {mode}（未写库） ===")
+            save_to_db(records, fill_only=args.fill_only, apply=False)
+            print("\n(确认无误后加 --save 执行)" if args.fill_only else
+                  "\n(覆盖式会改写 muskmeter 已修订的历史值，建议改用 --save --fill-only)")
 
 
 if __name__ == '__main__':

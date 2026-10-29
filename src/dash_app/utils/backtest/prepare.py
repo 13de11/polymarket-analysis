@@ -24,7 +24,9 @@ from src.dash_app.utils.data_loader import (
 
 
 def _daily_key() -> str:
-    return date.today().isoformat()
+    """小时级 cache key（数据每小时线上采集，回测准备数据随之刷新）"""
+    from datetime import datetime
+    return datetime.now().strftime("%Y-%m-%d %H")
 
 
 @lru_cache(maxsize=64)

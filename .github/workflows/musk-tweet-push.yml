@@ -1,0 +1,28 @@
+name: musk-tweet-push
+
+# 每小时抓取 muskmeter 推文小时计数，推送到 PythonAnywhere 线上库。
+# 前置配置（仓库 Settings → Secrets and variables → Actions）：
+#   COLLECT_KEY = PA WSGI 里设置的同名秘钥
+on:
+  schedule:
+    - cron: '7 * * * *'   # 每小时第 7 分钟（UTC）。GA 定时可能延迟 0~30 分钟，属正常
+  workflow_dispatch: {}    # 支持在 Actions 页面手动触发（首次测试用）
+
+jobs:
+  push:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 安装依赖
+        run: pip install requests
+
+      - name: 抓取 muskmeter 并推送到 PA
+        env:
+          COLLECT_KEY: ${{ secrets.COLLECT_KEY }}
+        run: python scripts/data_fetcher/fetch_muskmeter.py --push
