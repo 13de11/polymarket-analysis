@@ -4,8 +4,10 @@ name: musk-tweet-push
 # 前置配置（仓库 Settings → Secrets and variables → Actions）：
 #   COLLECT_KEY = PA WSGI 里设置的同名秘钥
 #
-# 说明：muskmeter 在 Vercel 安全检查后面，会拦数据中心的普通 HTTP 请求和无头
-# Chromium，所以这里用 patchright（playwright 反检测补丁版）+ 系统 Chrome 抓取。
+# 说明：muskmeter 在 Vercel 安全检查后面，会按 IP 段拦截数据中心流量
+# （GitHub Actions、公共中转服务的出口都被实测拦截）。
+# 对策：①安装 Cloudflare WARP 代理模式，让请求走消费级信誉的出口 IP
+#      ②失败则经 r.jina.ai 渲染中转 ③最后才尝试 patchright 无头浏览器
 on:
   schedule:
     - cron: '7 * * * *'   # 每小时第 7 分钟（UTC）。GA 定时可能延迟 0~30 分钟，属正常
@@ -23,12 +25,27 @@ jobs:
           python-version: '3.11'
 
       - name: 安装依赖
-        run: pip install requests patchright playwright
+        run: pip install "requests[socks]" patchright playwright
 
-      - name: 安装浏览器
+      - name: 安装浏览器（patchright/playwright 用）
         run: |
-          patchright install chromium
-          playwright install --with-deps chromium
+          patchright install chromium || true
+          playwright install --with-deps chromium || true
+
+      - name: 安装并连接 Cloudflare WARP（代理模式）
+        continue-on-error: true   # WARP 偶发注册失败不应阻塞任务（还有 jina/浏览器后备）
+        run: |
+          curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg |
+            sudo gpg --yes --dearmor -o /usr/share/keyrings/cloudflare-main.gpg
+          echo "deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflareclient.com/ $(lsb_release -cs) main" |
+            sudo tee /etc/apt/sources.list.d/cloudflare-client.list
+          sudo apt-get update -qq && sudo apt-get install -y cloudflare-warp
+          warp-cli --accept-tos registration new
+          warp-cli --accept-tos mode proxy
+          warp-cli --accept-tos connect
+          sleep 3
+          warp-cli --accept-tos status
+          echo "SOCKS_PROXY=socks5://127.0.0.1:40000" >> "$GITHUB_ENV"
 
       - name: 抓取 muskmeter 并推送到 PA（失败自动重试 3 次）
         env:

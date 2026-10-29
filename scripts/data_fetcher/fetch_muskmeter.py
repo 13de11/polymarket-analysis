@@ -14,11 +14,11 @@ muskmeter.live 爬虫（原型阶段：抓取 + 解析 + 打印/校验，不写�
    变为 UTC-5。首次跨冬令时运行时需人工核对一次（与网页或手抄数据对比）。
 
 用法：
-  python fetch_muskmeter.py                          # 抓默认 URL（当前事件窗口），打印差异（不写库）
-  python fetch_muskmeter.py --save                   # 同上，并把差异写回本地库（修复假 0 / 补缺）
-  python fetch_muskmeter.py --start <unix> --end <unix> --event-id <id>
-  python fetch_muskmeter.py --html _diag_musk_page.html   # 离线解析已保存的页面
-  python fetch_muskmeter.py --check                  # 仅对比汇总，不列明细
+  python scripts/data_fetcher/fetch_muskmeter.py                          # 抓默认 URL（当前事件窗口），打印差异（不写库）
+  python scripts/data_fetcher/fetch_muskmeter.py --save                   # 同上，并把差异写回本地库（修复假 0 / 补缺）
+  python scripts/data_fetcher/fetch_muskmeter.py --start <unix> --end <unix> --event-id <id>
+  python scripts/data_fetcher/fetch_muskmeter.py --html _diag_musk_page.html   # 离线解析已保存的页面
+  python scripts/data_fetcher/fetch_muskmeter.py --check                  # 仅对比汇总，不列明细
 """
 
 import sys
@@ -57,25 +57,62 @@ HEADERS = {
 
 
 def fetch_html(url):
-    """抓取页面：先直连，被 Vercel 安全检查拦截时自动降级到真实浏览器抓取。
+    """抓取页面。降级链：SOCKS 代理直连 → r.jina.ai 渲染 → 真实浏览器。
 
-    浏览器路径需要 playwright（pip install playwright && playwright install chromium），
-    GitHub Actions 环境会安装；本地直连通常成功，用不到它。
-    换请求头没有用——Vercel 拦的是数据中心 IP 的信誉，不是请求头。
+    背景：muskmeter 在 Vercel 安全检查后面，会对数据中心 IP（GitHub Actions、
+    各种代理服务的出口）弹挑战页。换请求头没用（IP 信誉问题），实测：
+    - requests 直连（数据中心 IP）→ 429
+    - patchright 无头浏览器 → 挑战页无限转圈
+    - allorigins/codetabs 等公共中转的出口 IP → 同样被拒
+    因此 GA 环境用 Cloudflare WARP 代理模式（消费级 IP 信誉）+ jina 渲染中转。
     """
-    resp = requests.get(url, headers=HEADERS, timeout=30)
+    proxies = None
+    socks = os.environ.get("SOCKS_PROXY", "")
+    if socks:
+        proxies = {"http": socks, "https": socks}
+        print(f"  🧦 使用 SOCKS 代理: {socks}")
+
+    resp = requests.get(url, headers=HEADERS, timeout=30, proxies=proxies)
     if resp.status_code == 429 or "Security Checkpoint" in resp.text:
-        print("  ⚠️ 直连被 Vercel 安全检查拦截，尝试真实浏览器抓取…")
+        print("  ⚠️ 直连被 Vercel 安全检查拦截，尝试 r.jina.ai 渲染中转…")
+        html = fetch_html_jina(url)
+        if html:
+            return html
+        print("  ⚠️ jina 中转未取到有效页面，尝试真实浏览器抓取…")
         try:
             return fetch_html_browser(url)
         except ImportError:
             raise RuntimeError(
-                "被 Vercel 安全检查拦截（429），且未安装 playwright 无法使用浏览器抓取。"
-                "GitHub Actions 环境请确认 workflow 里已安装 playwright + chromium")
+                "直连被拦、jina 无效，且未安装 playwright 无法使用浏览器抓取")
         except Exception as e:
-            raise RuntimeError(f"直连被拦且浏览器抓取也失败: {e}")
+            raise RuntimeError(f"直连被拦、jina 无效，浏览器抓取也失败: {e}")
     resp.raise_for_status()
     return resp.text
+
+
+def fetch_html_jina(url):
+    """r.jina.ai 渲染中转：jina 用自己的渲染基础设施抓页面。
+
+    x-respond-with: html 返回挑战通过后的完整 HTML，可直接复用现有解析器；
+    取不到有效页面时返回 None，并打印响应样本供诊断。
+    """
+    try:
+        resp = requests.get(
+            f"https://r.jina.ai/{url}",
+            headers={"x-respond-with": "html", "User-Agent": HEADERS["User-Agent"]},
+            timeout=120)
+    except Exception as e:
+        print(f"  [jina] 请求失败: {type(e).__name__}: {str(e)[:120]}")
+        return None
+    if resp.status_code != 200:
+        print(f"  [jina] HTTP {resp.status_code}")
+        return None
+    text = resp.text
+    if "Security Checkpoint" in text or "heatmap" not in text:
+        print(f"  [jina] 响应无效（{len(text):,} 字符），样本: {text[:200]}")
+        return None
+    print(f"  [jina] 成功取得渲染页面，{len(text):,} 字符")
+    return text
 
 
 def fetch_html_browser(url):
