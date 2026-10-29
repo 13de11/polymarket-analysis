@@ -232,6 +232,64 @@ def register_collect_routes(server):
             "database": str(DB_PATH),
         })
 
+    @server.route("/collect/tokens")
+    def _collect_tokens():
+        """下发活跃市场的 token 映射（给 GA 价格采集脚本用，只读）"""
+        if not _authorized():
+            return jsonify({"ok": False, "error": "unauthorized"}), 404
+        try:
+            conn = _connect()
+            try:
+                event_ids = _active_event_ids(conn)
+                if not event_ids:
+                    return jsonify({"ok": True, "tokens": []})
+                placeholders = ",".join(["?"] * len(event_ids))
+                rows = conn.execute(f"""
+                    SELECT m.id, t.token_id
+                    FROM markets m
+                    JOIN market_tokens t ON t.market_id = m.id
+                    WHERE m.event_id IN ({placeholders})
+                    ORDER BY m.id
+                """, event_ids).fetchall()
+                return jsonify({"ok": True, "tokens": [
+                    {"market_id": r[0], "token_id": r[1]} for r in rows]})
+            finally:
+                conn.close()
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)[:300]}), 500
+
+    @server.route("/collect/prices-data", methods=["POST"])
+    def _collect_prices_data():
+        """接收 GA 采集的价格行并 upsert 到 price_hourly
+
+        请求体: {"rows": [[market_id, hour_start_utc, price_last, price_avg], ...]}
+        """
+        if not _authorized():
+            return jsonify({"ok": False, "error": "unauthorized"}), 404
+        try:
+            payload = request.get_json(force=True, silent=True) or {}
+            rows = payload.get("rows", [])
+            if not isinstance(rows, list) or not rows:
+                return jsonify({"ok": False, "error": "rows 字段缺失或为空"}), 400
+            conn = _connect()
+            try:
+                written = 0
+                for item in rows:
+                    market_id, hour_start, price_last, price_avg = item
+                    conn.execute(
+                        "INSERT OR REPLACE INTO price_hourly "
+                        "(market_id, hour_start_utc, price_last, price_avg) "
+                        "VALUES (?, ?, ?, ?)",
+                        (str(market_id), int(hour_start),
+                         float(price_last), float(price_avg)))
+                    written += 1
+                conn.commit()
+                return jsonify({"ok": True, "written": written})
+            finally:
+                conn.close()
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)[:300]}), 500
+
     @server.route("/collect/prices")
     def _collect_prices():
         if not _authorized():

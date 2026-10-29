@@ -1,0 +1,31 @@
+name: price-push
+
+# 每小时采集 Polymarket 价格并推送到 PythonAnywhere 线上库。
+# 前置配置（仓库 Settings → Secrets and variables → Actions）：
+#   COLLECT_KEY = PA WSGI 里设置的同名秘钥
+#
+# 说明：直接在 GA 上调 Polymarket 公开 API 拉价（不依赖 PA 出网），
+# 聚合小时线后 POST 回 PA 的 /collect/prices-data 端点写库。
+on:
+  schedule:
+    - cron: '23 * * * *'   # 每小时第 23 分钟（UTC），与推文任务（:07）错开
+  workflow_dispatch: {}    # 支持手动触发（测试用）
+
+jobs:
+  push:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 安装依赖
+        run: pip install requests
+
+      - name: 采集价格并推送到 PA
+        env:
+          COLLECT_KEY: ${{ secrets.COLLECT_KEY }}
+        run: python scripts/data_fetcher/fetch_prices_ga.py
