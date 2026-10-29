@@ -79,22 +79,57 @@ def fetch_html(url):
 
 
 def fetch_html_browser(url):
-    """Playwright 真实浏览器抓取：真实 Chromium 会自动执行 Vercel 挑战 JS 并通过"""
-    from playwright.sync_api import sync_playwright
+    """真实浏览器抓取：自动执行 Vercel 挑战 JS 并通过
 
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+    浏览器驱动优先级：patchright（playwright 反检测补丁版）> playwright。
+    启动参数做了无头自动化指纹隐藏（webdriver/chrome 对象等）。
+    失败时输出诊断信息（页面标题 + 内容片段），便于判断卡在哪。
+    """
+    try:
+        from patchright.sync_api import sync_playwright as sync_pw
+        driver_name = 'patchright'
+    except ImportError:
+        from playwright.sync_api import sync_playwright as sync_pw
+        driver_name = 'playwright'
+
+    with sync_pw() as p:
+        browser = None
+        # 优先用系统安装的 Google Chrome（品牌通道，指纹比 chromium 更真实）
+        for launch_kwargs in ({'channel': 'chrome', 'headless': True},
+                              {'headless': True}):
+            try:
+                browser = p.chromium.launch(**launch_kwargs)
+                break
+            except Exception:
+                continue
+        if browser is None:
+            raise RuntimeError('无法启动浏览器（chrome 通道和内置 chromium 都失败）')
+
         try:
-            page = browser.new_page(user_agent=HEADERS["User-Agent"])
-            page.goto(url, wait_until="domcontentloaded", timeout=60000)
-            # 检查点页会自动执行挑战 JS 后放行；循环等待真实热力图出现（最多 60 秒）
-            deadline = time.time() + 60
+            page = browser.new_page(user_agent=HEADERS['User-Agent'], locale='en-US')
+            # 隐藏无头自动化的常见检测点
+            page.add_init_script("""
+                Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+                window.chrome = window.chrome || { runtime: {} };
+                Object.defineProperty(navigator, 'languages', {get: () => ['en-US', 'en']});
+                Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
+            """)
+            page.goto(url, wait_until='domcontentloaded', timeout=60000)
+
+            # 检查点页会自动执行挑战 JS 后放行；循环等待真实热力图出现（最多 90 秒）
+            deadline = time.time() + 90
             while time.time() < deadline:
                 html = page.content()
-                if "Security Checkpoint" not in html and "heatmap" in html:
+                if 'Security Checkpoint' not in html and 'heatmap' in html:
                     return html
                 page.wait_for_timeout(2000)
-            raise RuntimeError("等待 60 秒仍未通过安全检查（页面未出现热力图）")
+
+            # 诊断信息：看到底卡在什么页面
+            html = page.content()
+            snippet = re.sub(r'\s+', ' ', html)[:300]
+            raise RuntimeError(
+                f'等待 90 秒仍未通过安全检查 [driver={driver_name}] '
+                f'页面标题="{page.title()}" 内容片段="{snippet}"')
         finally:
             browser.close()
 

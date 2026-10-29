@@ -4,17 +4,17 @@ name: musk-tweet-push
 # 前置配置（仓库 Settings → Secrets and variables → Actions）：
 #   COLLECT_KEY = PA WSGI 里设置的同名秘钥
 #
-# 说明：muskmeter 在 Vercel 安全检查后面，会拦数据中心的普通 HTTP 请求，
-# 所以这里用 Playwright 真实浏览器（自动执行挑战 JS）抓取。
+# 说明：muskmeter 在 Vercel 安全检查后面，会拦数据中心的普通 HTTP 请求和无头
+# Chromium，所以这里用 patchright（playwright 反检测补丁版）+ 系统 Chrome 抓取。
 on:
   schedule:
     - cron: '7 * * * *'   # 每小时第 7 分钟（UTC）。GA 定时可能延迟 0~30 分钟，属正常
-  workflow_dispatch: {}    # 支持在 Actions 页面手动触发（首次测试用）
+  workflow_dispatch: {}    # 支持在 Actions 页面手动触发（测试用）
 
 jobs:
   push:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -23,10 +23,12 @@ jobs:
           python-version: '3.11'
 
       - name: 安装依赖
-        run: pip install requests playwright
+        run: pip install requests patchright playwright
 
-      - name: 安装 Chromium 浏览器
-        run: playwright install --with-deps chromium
+      - name: 安装浏览器
+        run: |
+          patchright install chromium
+          playwright install --with-deps chromium
 
       - name: 抓取 muskmeter 并推送到 PA（失败自动重试 3 次）
         env:
