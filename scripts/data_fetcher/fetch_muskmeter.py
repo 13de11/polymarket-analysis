@@ -206,7 +206,9 @@ def parse_heatmap(html: str, end_ts: int):
     n_days = len(heads)
 
     # 末列锚点推断：实测规则是 end 参数的 UTC 日期（滚动窗口 end=now 时页面会
-    # 包含"今天"整列），但为健壮起见依次尝试多个锚点，取能使日号序列自洽的那个
+    # 包含"今天"整列），但跨 UTC 零点时列布局会有过渡态、且网站首列偶有渲染 bug，
+    # 因此取"日号匹配数最多"的锚点，允许个别列不符（最旧的边缘列本来就会被
+    # MAX_PUSH_AGE_SECONDS 丢弃，不影响数据）
     end_utc = datetime.fromtimestamp(end_ts, tz=timezone.utc).date()
     end_et = datetime.fromtimestamp(end_ts, tz=tz).date()
     today_et = datetime.now(tz).date()
@@ -215,16 +217,21 @@ def parse_heatmap(html: str, end_ts: int):
         if cand not in candidates:
             candidates.append(cand)
 
-    days = None
+    best = None  # (匹配数, 锚点, 日期列表)
     for anchor in candidates:
         cand_days = [anchor - timedelta(days=n_days - 1 - k) for k in range(n_days)]
-        if all(d.day == int(num) for (name, num), d in zip(heads, cand_days)):
-            days = cand_days
-            break
-    if days is None:
+        matches = sum(1 for (_, num), d in zip(heads, cand_days) if d.day == int(num))
+        if best is None or matches > best[0]:
+            best = (matches, anchor, cand_days)
+
+    matches, anchor, days = best
+    if matches < n_days - 1:
         raise RuntimeError(
-            "日期倒推校验失败：所有锚点（end 的 UTC/ET 日期、今天）都无法对齐表头日号，"
+            f"日期倒推校验失败：最优锚点 {anchor} 仅匹配 {matches}/{n_days} 列，"
             "页面列布局可能已变化，需要调整推断逻辑")
+    if matches < n_days:
+        print(f"⚠️ 表头有 {n_days - matches} 列日号与推算不符（网站边缘渲染 bug），"
+              f"按最优锚点 {anchor} 继续（边缘列数据会被时效截止丢弃）")
 
     # 星期仅警告不报错（实测网站对窗口首列的星期标注偶有 bug）
     weekday_map = {'Mon': 0, 'Tue': 1, 'Wed': 2, 'Thu': 3, 'Fri': 4, 'Sat': 5, 'Sun': 6}
