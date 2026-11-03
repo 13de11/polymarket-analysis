@@ -2,9 +2,10 @@
 首页 - 项目概览
 """
 import os
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from dash import html, dcc, Input, Output, callback
 from src.dash_app.utils.stats_loader import get_overview_stats
+from src.dash_app.utils.data_loader import run_query
 
 try:
     from config import LIGHT_DB_PATH
@@ -74,12 +75,22 @@ def _build_kpi_cards(series='7d'):
 
 
 def _get_db_last_modified():
-    """从数据库文件的修改时间获取真实的'最后更新'时间"""
-    if not LIGHT_DB_PATH or not os.path.exists(str(LIGHT_DB_PATH)):
-        return '未知'
+    """数据新鲜度：价格/推文表的最新时间戳（北京时间）
+
+    注意：不能用数据库文件 mtime——应用跑在 WAL 模式下，写入先落 -wal 文件，
+    主库文件的 mtime 只在 checkpoint 时更新，会长期显示旧时间（假象）。
+    """
     try:
-        mtime = os.path.getmtime(str(LIGHT_DB_PATH))
-        return datetime.fromtimestamp(mtime).strftime('%Y-%m-%d %H:%M')
+        df = run_query("""
+            SELECT MAX(ts) AS max_ts FROM (
+                SELECT MAX(hour_start_utc) AS ts FROM price_hourly
+                UNION ALL
+                SELECT MAX(timestamp_unix_utc) AS ts FROM tweet_hourly
+            )
+        """)
+        ts = int(df['max_ts'].iloc[0])
+        bj = datetime.fromtimestamp(ts, tz=timezone.utc) + timedelta(hours=8)
+        return bj.strftime('%Y-%m-%d %H:%M') + ' (北京时间)'
     except Exception:
         return '未知'
 
@@ -138,7 +149,7 @@ def layout():
                    style={'color': '#28a745', 'margin': '4px 0'}),
             html.P("📂 数据来源: Polymarket + Twitter",
                    style={'color': '#6c757d', 'margin': '4px 0'}),
-            html.P(f"🕐 数据库最后更新: {_get_db_last_modified()}",
+            html.P(f"🕐 数据最新: {_get_db_last_modified()}",
                    style={'color': '#6c757d', 'margin': '4px 0'}),
         ], style={'fontSize': '14px'})
     ])
