@@ -27,21 +27,25 @@ STRATEGY_REGISTRY = {
             'signal_mode',    # 信号显示模式
         ],
     },
-    # 下面这些是未来要实现的基线策略，先占位，用于前端下拉展示时能区分
-    # 实现时需要在 backtest/runner.py 里按 strategy_id 分发
-    # 'buy_hold': {
-    #     'label': '买入持有',
-    #     'description': '开盘即全仓买入，结束平仓',
-    #     'param_keys': [],
-    # },
-    # 'reverse_signal': {
-    #     'label': '反向信号策略',
-    #     'description': '方向信号取反，用于验证信号是否真有 alpha',
-    #     'param_keys': [
-    #         'capacity', 'price_threshold', 'distance_threshold',
-    #         'inertia', 'momentum_enable', 'momentum_coef',
-    #     ],
-    # },
+    # E4: 基线策略——runner.py 按 strategy_id 变换信号后复用同一套回测管线
+    'buy_hold': {
+        'label': '买入持有（基线）',
+        'description': '开盘即全仓买入，持有到结束。无参数，用于评价信号策略有没有跑赢无脑持有',
+        'param_keys': [],
+    },
+    'reverse_signal': {
+        'label': '反向信号（反着做）',
+        'description': '与方向信号用同样的参数判断，但 ↑/↓ 反过来执行。长期跑赢方向信号说明信号是反向指标',
+        # 与 direction_signal 同一套信号参数：保证生成的是"同一个信号"再反转，对比才公平
+        'param_keys': [
+            'price_type',
+            'window_type',
+            'capacity', 'price_threshold', 'distance_threshold',
+            'inertia',
+            'momentum_coef',
+            'signal_mode',
+        ],
+    },
 }
 
 # ============ 策略配置数据结构 ============
