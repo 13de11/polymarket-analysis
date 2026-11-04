@@ -417,21 +417,59 @@ def get_latest_data_hour() -> dict:
     Returns:
         {} 表示库里没有推文数据；否则：
         {'ts', 'date': 'YYYY-MM-DD', 'hour': int, 'dow': 'Mon'..'Sun',
-         'dow_cn': '一'..'日', 'lag_hours': float, 'label': '11-04 03:00 UTC'}
+         'dow_cn': '一'..'日', 'lag_hours': float, 'hl_lag_hours': float,
+         'label': '11-04 03:00 UTC',
+         'partial': bool, 'partial_label'?: str, 'partial_count'?: int}
+
+    关于 partial：采集每小时开跑就写入"当小时"记录，那一刻它的 count 只统计到
+    抓取时点，是残缺值（常常是 0）。所以高亮只认"已走完"的小时，最新那格若还在
+    进行中，就往前退一小时 —— 这样高亮位置与 XTracker 等外部站点一致（它们也只
+    标已结束的小时）。partial=True 时附带上该进行中小时的 label 和当前条数。
     """
     df = run_query("SELECT MAX(timestamp_unix_utc) AS ts FROM tweet_hourly")
     if df.empty or pd.isna(df['ts'].iloc[0]):
         return {}
 
-    ts = int(df['ts'].iloc[0])
+    latest_ts = int(df['ts'].iloc[0])
+    now_ts = datetime.now(timezone.utc).timestamp()
+
+    # 「最新那一格」可能是一个还没走完的小时：采集每小时开跑就写入当小时，
+    # 此时它的 count 只统计到抓取那一刻，是残缺值（多半是 0）。
+    # 高亮若指向它，会和 XTracker 等外部站点差一格——它们只标已结束的小时。
+    partial = (latest_ts + 3600) > now_ts
+    hl_ts = latest_ts - 3600 if partial else latest_ts
+
+    # 兜底：上一小时在库里没有记录时，仍用最新那格，避免高亮落空
+    if hl_ts != latest_ts:
+        chk = run_query(
+            "SELECT tweet_count FROM tweet_hourly WHERE timestamp_unix_utc = ?",
+            (hl_ts,))
+        if chk.empty:
+            hl_ts, partial = latest_ts, False
+
+    ts = hl_ts
     dt = datetime.fromtimestamp(ts, timezone.utc)
-    lag_hours = (datetime.now(timezone.utc).timestamp() - ts) / 3600
+    # 两个延迟口径分开：
+    #   lag_hours    —— 基于库里真实最新格，用来判断"采集是不是断了"（健康哨兵）
+    #   hl_lag_hours —— 基于高亮格（已走完的那小时），用来对用户说"你看到的是多久前的"
+    lag_hours = (now_ts - latest_ts) / 3600
+    hl_lag_hours = (now_ts - ts) / 3600
 
     # 固定表查表，不用 strftime('%a')：后者受系统 locale 影响（中文系统会返回"周三"）
     dow_names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
     dow_cn = {'Mon': '一', 'Tue': '二', 'Wed': '三', 'Thu': '四',
               'Fri': '五', 'Sat': '六', 'Sun': '日'}
     dow = dow_names[dt.weekday()]
+
+    # 进行中那一格的信息（供提示条显示"当前小时仍在累计"）
+    feat = {'partial': partial}
+    if partial:
+        p_dt = datetime.fromtimestamp(latest_ts, timezone.utc)
+        p_row = run_query(
+            "SELECT tweet_count FROM tweet_hourly WHERE timestamp_unix_utc = ?",
+            (latest_ts,))
+        feat['partial_label'] = p_dt.strftime('%m-%d %H:00') + ' UTC'
+        feat['partial_count'] = int(p_row['tweet_count'].iloc[0]) if not p_row.empty else 0
 
     return {
         'ts': ts,
@@ -440,7 +478,9 @@ def get_latest_data_hour() -> dict:
         'dow': dow,
         'dow_cn': dow_cn[dow],
         'lag_hours': round(lag_hours, 1),
+        'hl_lag_hours': round(hl_lag_hours, 1),
         'label': dt.strftime('%m-%d %H:00') + ' UTC',
+        **feat,
     }
 
 
@@ -485,8 +525,14 @@ def get_tweet_matrix(start_date: str = None, end_date: str = None) -> pd.DataFra
         conditions.append("timestamp_unix_utc >= ?")
         params.append(start_ts)
     if end_date:
-        end_ts = int(pd.to_datetime(end_date).timestamp())
-        conditions.append("timestamp_unix_utc <= ?")
+        # 纯日期（'2026-11-04'）的语义是"包含当天"，pd.to_datetime 会解析成当天
+        # 00:00，若直接用它做上界，会把当天 00:00 之后的数据全部丢掉——探索器
+        # 「最近 7 天」曾经因此只能看到当天 0 点那一格。这里推到次日 0 点，用 < 比较。
+        end_dt = pd.to_datetime(end_date)
+        if len(str(end_date).strip()) <= 10:
+            end_dt = end_dt + pd.Timedelta(days=1)
+        end_ts = int(end_dt.timestamp())
+        conditions.append("timestamp_unix_utc < ?")
         params.append(end_ts)
 
     query = """

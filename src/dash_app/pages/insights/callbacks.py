@@ -176,22 +176,33 @@ def _freshness_bar(latest: dict):
         return html.Div("⏱ 暂无推文数据", style={'fontSize': '12px',
                                                   'color': '#6c757d'})
 
-    lag = latest['lag_hours']
+    lag = latest['lag_hours']                                  # 采集新鲜度（健康哨兵）
+    hl_lag = latest.get('hl_lag_hours', lag)                   # 高亮格距今多久（对用户显示）
     # 每小时采集，正常延迟 1~2 小时；超过 3 小时就该怀疑采集断了
     lag_color = '#6c757d' if lag < 3 else '#e8590c'
     lag_warn = '' if lag < 3 else '（>3 小时，建议检查采集是否中断）'
 
-    return html.Div([
+    children = [
         html.Span("⏱ ", style={'fontSize': '13px'}),
-        html.Strong("最新数据："),
+        html.Strong("最新完整数据："),
         html.Span(f"{latest['label']}（周{latest['dow_cn']} {latest['hour']:02d} 时）"),
-        html.Span(f"　距今 {lag:.1f} 小时{lag_warn}",
+        html.Span(f"　距今 {hl_lag:.1f} 小时{lag_warn}",
                   style={'color': lag_color, 'fontWeight': 'bold'}),
-        html.Span("　· 图中高亮 = 最新数据所在的小时（每采集一次自动跟随）",
-                  style={'color': '#868e96', 'marginLeft': '8px'}),
-    ], style={'fontSize': '12px', 'padding': '6px 10px',
-              'backgroundColor': '#f8f9fa', 'borderRadius': '4px',
-              'border': '1px solid #e9ecef'})
+    ]
+    if latest.get('partial'):
+        # 最新那小时还没走完，count 是残缺值 —— 只提示，不拿去高亮
+        children.append(html.Span(
+            f"　· {latest['partial_label']} 这一小时仍在累计（已 {latest['partial_count']} 条），"
+            f"未计入高亮",
+            style={'color': '#868e96', 'marginLeft': '8px'}))
+    else:
+        children.append(html.Span(
+            "　· 图中高亮 = 最新数据所在的小时（每采集一次自动跟随）",
+            style={'color': '#868e96', 'marginLeft': '8px'}))
+
+    return html.Div(children, style={'fontSize': '12px', 'padding': '6px 10px',
+                                     'backgroundColor': '#f8f9fa', 'borderRadius': '4px',
+                                     'border': '1px solid #e9ecef'})
 
 
 @callback(
