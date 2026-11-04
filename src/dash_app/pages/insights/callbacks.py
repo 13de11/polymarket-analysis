@@ -227,6 +227,13 @@ def update_insights_tweets(time_range, pathname):
     if not heatmap_df.empty:
         heatmap_pivot = heatmap_df.pivot_table(index='dow_label', columns='hour', values='avg_tweets', fill_value=0)
 
+        # 行序改成周一到周日（pivot 默认按字母排，会出现 Fri/Mon/Sat... 的无逻辑顺序）
+        _DOW_ORDER = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+        _rows = [d for d in _DOW_ORDER if d in heatmap_pivot.index]
+        # 兜底：万一有未知标签（比如 'Unknown'），追加到末尾，不丢数据
+        _rows += [d for d in heatmap_pivot.index if d not in _rows]
+        heatmap_pivot = heatmap_pivot.reindex(_rows)
+
         # 坐标一律转数值：x = 小时(0~23)，y = 行序号(0~6)。
         # 热力图原本用字符串做类别轴，类别轴上没法画精确对齐的矩形框，
         # 转成数值后格子边界恒为 ±0.5，高亮框可以像素级贴合。
@@ -244,8 +251,9 @@ def update_insights_tweets(time_range, pathname):
         ))
         heatmap2_fig.update_layout(
             xaxis={'title': '小时 (UTC)', 'tickmode': 'array', 'tickvals': list(range(0, 24, 3))},
+            # autorange 反转：数值 y 轴默认从下往上画，反转后周一在最上面
             yaxis={'title': '星期', 'tickmode': 'array', 'tickvals': y_vals,
-                   'ticktext': list(heatmap_pivot.index)},
+                   'ticktext': list(heatmap_pivot.index), 'autorange': 'reversed'},
             margin={'l': 80, 'r': 20, 't': 20, 'b': 40},
         )
 
