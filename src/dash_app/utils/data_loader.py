@@ -95,21 +95,37 @@ def _daily_cache_key() -> str:
 
 
 @lru_cache(maxsize=64)
-def _get_elon_tweet_events_cached(series: str, cache_key: str):
-    """内部：带缓存的查询。cache_key 用于失效"""
+def _get_elon_tweet_events_cached(series: str, cache_key: str,
+                                  include_active: bool = False):
+    """内部：带缓存的查询。cache_key 用于失效
+
+    include_active=False（默认）：只返回已结束事件（end_date < now），
+        与历史行为完全一致 —— 首页 / 数据中心 / 回测等调用方不受影响。
+    include_active=True：额外返回进行中事件（end_date >= now），
+        并用 is_active 列标记，供价格-推文分析页区分展示。
+    """
     from datetime import datetime, timezone
     import re
 
-    now_utc = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(timezone.utc)
 
-    query = """
-        SELECT id, slug, game_start_time, start_date, end_date
-        FROM events
-        WHERE slug LIKE 'elon-musk-of-tweets%'
-          AND end_date < ?
-        ORDER BY start_date
-    """
-    df = run_query(query, (now_utc,))
+    if include_active:
+        query = """
+            SELECT id, slug, game_start_time, start_date, end_date
+            FROM events
+            WHERE slug LIKE 'elon-musk-of-tweets%'
+            ORDER BY start_date
+        """
+        df = run_query(query)
+    else:
+        query = """
+            SELECT id, slug, game_start_time, start_date, end_date
+            FROM events
+            WHERE slug LIKE 'elon-musk-of-tweets%'
+              AND end_date < ?
+            ORDER BY start_date
+        """
+        df = run_query(query, (now.isoformat(),))
 
     if df.empty:
         return df
@@ -140,16 +156,24 @@ def _get_elon_tweet_events_cached(series: str, cache_key: str):
     elif series == '48h':
         df = df[df['slug'].apply(parse_days) == 2]
 
+    # 标记进行中事件（end_date 尚未到达）。已结束事件这一列恒为 False。
+    df = df.copy()
+    end_dt = pd.to_datetime(df['end_date'], utc=True, errors='coerce')
+    df['is_active'] = end_dt > pd.Timestamp(now)
+
     return df
 
 
-def get_elon_tweet_events(series: str = '7d'):
-    """获取已结束的 elon-tweets 系列事件（带缓存）
+def get_elon_tweet_events(series: str = '7d', include_active: bool = False):
+    """获取 elon-tweets 系列事件（带缓存，按小时失效）
 
-    缓存 key 包含日期（每天自动失效一次），避免数据更新后不刷新。
+    Args:
+        series: '7d' / '48h' / 'all'
+        include_active: False（默认）只返回已结束事件 —— 历史调用方行为不变；
+                        True 额外包含进行中事件，用 is_active 列标记。
     """
     cache_key = _daily_cache_key()
-    cached = _get_elon_tweet_events_cached(series, cache_key)
+    cached = _get_elon_tweet_events_cached(series, cache_key, include_active)
     # 返回副本，避免调用方修改缓存
     return cached.copy()
 
@@ -264,6 +288,62 @@ def get_target_markets_batch(event_ids: list) -> dict:
     ids_tuple = tuple(sorted(event_ids))
     cached = _get_target_markets_batch_cached(ids_tuple, cache_key)
     return dict(cached)
+
+
+@lru_cache(maxsize=256)
+def _get_top_markets_by_price_cached(event_id: str, n: int,
+                                     cache_key: str) -> pd.DataFrame:
+    """内部：取事件内各市场的最新价格，按价格降序取前 n"""
+    query = """
+        SELECT
+            m.id,
+            m.range_start,
+            m.range_end,
+            (
+                SELECT p.price_last
+                FROM price_hourly p
+                WHERE p.market_id = m.id
+                ORDER BY p.hour_start_utc DESC
+                LIMIT 1
+            ) AS price_last
+        FROM markets m
+        WHERE m.event_id = ?
+        ORDER BY price_last DESC
+    """
+    df = run_query(query, (event_id,))
+    if df.empty:
+        return df
+    df = df.dropna(subset=['price_last'])
+    return df.head(n).reset_index(drop=True)
+
+
+def get_top_markets_by_price(event_id: str, n: int = 5):
+    """取事件内当前价格最高的前 n 个市场（进行中事件默认展示用）
+
+    注意：这与「命中市场」无关。进行中事件还没有结算价，
+    只能按最新价格排序 —— 价格最高的市场通常就是「正在打」的热门区间。
+    """
+    cached = _get_top_markets_by_price_cached(event_id, int(n),
+                                              _daily_cache_key())
+    return cached.copy() if not cached.empty else cached
+
+
+@lru_cache(maxsize=128)
+def _is_event_active_cached(event_id: str, cache_key: str) -> bool:
+    """内部：判断事件是否仍在进行中（end_date >= now）"""
+    from datetime import timezone
+    df = run_query("SELECT end_date FROM events WHERE id = ?", (event_id,))
+    if df.empty or not df['end_date'].iloc[0]:
+        return False
+    end = pd.to_datetime(df['end_date'].iloc[0], utc=True, errors='coerce')
+    if pd.isna(end):
+        return False
+    return end > pd.Timestamp(datetime.now(timezone.utc))
+
+
+def is_event_active(event_id: str) -> bool:
+    """事件是否仍在进行中（未到 end_date）"""
+    return _is_event_active_cached(event_id, _daily_cache_key())
 
 @lru_cache(maxsize=256)
 def _get_price_data_cached(market_id: str, start_ts, end_ts,
@@ -468,3 +548,5 @@ def clear_caches():
     _get_market_median_cached.cache_clear()
     _get_event_gamestart_label_cached.cache_clear()
     _get_event_start_ts_cached.cache_clear()
+    _get_top_markets_by_price_cached.cache_clear()
+    _is_event_active_cached.cache_clear()

@@ -16,6 +16,8 @@ from src.dash_app.utils.data_loader import (
     get_price_data,
     get_tweet_data,
     get_target_markets_batch,
+    get_top_markets_by_price,
+    is_event_active,
 )
 
 def layout():
@@ -35,14 +37,19 @@ def layout():
                 html.Strong("数据范围"),
                 html.Span(" | 仅显示 ", style={'margin': '0 5px'}),
                 html.Code("slug LIKE 'elon-musk-of-tweets%'"),
-                html.Span(" 且 ", style={'margin': '0 5px'}),
-                html.Code("end_date < 当前时间"),
-                html.Span(" 的已结束事件", style={'margin': '0 5px'}),
+                html.Span(" 的已结束 + 进行中事件", style={'margin': '0 5px'}),
+            ], style={'display': 'inline-block', 'marginRight': 30}),
+            html.Div([
+                html.Span("⏳ ", style={'fontSize': '18px'}),
+                html.Strong("进行中事件"),
+                html.Span(" | 未结算、无命中区间；下拉框标注 ", style={'margin': '0 5px'}),
+                html.Code("(进行中)"),
+                html.Span("，默认展示当前价格最高的 5 个市场", style={'margin': '0 5px'}),
             ], style={'display': 'inline-block', 'marginRight': 30}),
             html.Div([
                 html.Span("🎯 ", style={'fontSize': '18px'}),
                 html.Strong("命中市场"),
-                html.Span(" | 最后一个 ", style={'margin': '0 5px'}),
+                html.Span(" | 仅对已结束事件：最后一个 ", style={'margin': '0 5px'}),
                 html.Code(f"price_last > {HIT_THRESHOLD}"),
                 html.Span(" 的市场", style={'margin': '0 5px'}),
             ], style={'display': 'inline-block'}),
@@ -87,9 +94,14 @@ def layout():
             html.Div([
                 html.Label("默认显示:", style={'fontWeight': 'bold', 'fontSize': '14px'}),
                 html.Div([
-                    html.Span("🎯 命中市场及邻近市场",
+                    html.Span("已结束 → 🎯 命中市场±2",
                               style={'color': '#28a745',
-                                     'fontWeight': 'bold'})
+                                     'fontWeight': 'bold',
+                                     'display': 'block'}),
+                    html.Span("进行中 → ⏳ 价格前 5",
+                              style={'color': '#fd7e14',
+                                     'fontWeight': 'bold',
+                                     'display': 'block'})
                 ], style={'marginTop': 6})
             ], style={'width': '20%', 'display': 'inline-block', 'verticalAlign': 'top'}),
         ], style={
@@ -156,6 +168,10 @@ def layout():
                     html.Strong("⭐ 命中市场"),
                     html.Span(f"：最后一个价格 > {HIT_THRESHOLD} 的市场（即该区间最终「达成」），红色线高亮")
                 ]),
+                html.Li([
+                    html.Strong("⏳ 进行中事件"),
+                    html.Span("：尚无结算价，不判定命中、不画红色命中线；价格与推文均截至最新采集小时")
+                ]),
             ], style={'margin': '6px 0', 'paddingLeft': '20px', 'fontSize': '12px', 'color': '#495057'})
         ], style={
             'padding': '10px 15px',
@@ -195,23 +211,29 @@ def update_events(series, pathname):
         return no_update, no_update
 
 
-    events_df = get_elon_tweet_events(series)
+    events_df = get_elon_tweet_events(series, include_active=True)
 
     if events_df.empty:
         return [], None
 
-    event_ids = events_df['id'].tolist()
-    targets_map = get_target_markets_batch(event_ids)
+    # 命中市场只对已结束事件有意义（进行中事件还没结算价），
+    # 因此只把这些事件送去批量查命中市场，省一次无用查询。
+    finished_ids = events_df.loc[~events_df['is_active'].astype(bool), 'id'].tolist()
+    targets_map = get_target_markets_batch(finished_ids)
 
     event_options = []
     for _, row in events_df.iterrows():
-        target = targets_map.get(row['id'])
-        if target:
-            r_start = int(target['range_start'])
-            r_end = int(target['range_end']) if target['range_end'] and not pd.isna(target['range_end']) else '∞'
-            label = f"{row['slug']} (命中: {r_start}-{r_end})"
+        if bool(row['is_active']):
+            # 未结算：不显示"命中: x-y"（那个是当前最高价市场，会被误读成命中）
+            label = f"{row['slug']} (进行中)"
         else:
-            label = row['slug']
+            target = targets_map.get(row['id'])
+            if target:
+                r_start = int(target['range_start'])
+                r_end = int(target['range_end']) if target['range_end'] and not pd.isna(target['range_end']) else '∞'
+                label = f"{row['slug']} (命中: {r_start}-{r_end})"
+            else:
+                label = row['slug']
         event_options.append({'label': label, 'value': row['id']})
 
     default_event = events_df.iloc[-1]['id'] if not events_df.empty else None
@@ -248,6 +270,19 @@ def update_markets(event_id, pathname):
         else:
             label = f"{r_start}-{int(row['range_end'])}"
         options.append({'label': label, 'value': row['id']})
+
+    # ---- 进行中事件：没有结算时刻，不存在"命中市场" ----
+    # 按当前最新价格降序取前 5（价格最高的就是正在打的热门区间）
+    if is_event_active(event_id):
+        top_df = get_top_markets_by_price(event_id, 5)
+        if not top_df.empty:
+            selected_ids = top_df['id'].tolist()
+        else:
+            # 兜底：极端情况下查不到最新价，退回按区间升序前 5
+            selected_ids = markets_df.head(5)['id'].tolist()
+        hint = (f"⏳ 进行中事件（未结算，无命中区间）"
+                f"，默认显示当前价格最高的 {len(selected_ids)} 个市场")
+        return options, selected_ids, {}, hint
 
     target = get_target_market(event_id)
 
