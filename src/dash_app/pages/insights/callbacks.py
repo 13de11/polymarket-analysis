@@ -46,8 +46,9 @@ _KPI_TIPS = {
     Input('series-selector', 'value'),
     Input('insights-window', 'value'),
     Input('url', 'pathname'),
+    Input('data-version', 'data'),
 )
-def update_insights_overview(series, window_days, pathname):
+def update_insights_overview(series, window_days, pathname, _version):
     if pathname != '/insights':
         return no_update, no_update, no_update
 
@@ -212,8 +213,9 @@ def _freshness_bar(latest: dict):
     Output('insights-data-freshness', 'children'),
     Input('insights-time-range', 'value'),
     Input('url', 'pathname'),
+    Input('data-version', 'data'),
 )
-def update_insights_tweets(time_range, pathname):
+def update_insights_tweets(time_range, pathname, _version):
     if pathname != '/insights':
         return no_update, no_update, no_update, no_update
 
@@ -332,8 +334,9 @@ def update_insights_tweets(time_range, pathname):
     Output('insights-survival-chart', 'figure'),
     Input('series-selector', 'value'),
     Input('url', 'pathname'),
+    Input('data-version', 'data'),
 )
-def update_insights_hits(series, pathname):
+def update_insights_hits(series, pathname, _version):
     if pathname != '/insights':
         return no_update, no_update, no_update
 

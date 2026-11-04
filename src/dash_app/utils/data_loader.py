@@ -522,6 +522,24 @@ def get_event_start_timestamp(event_id: str) -> Optional[int]:
     """获取事件开盘时间戳（带缓存）"""
     return _get_event_start_ts_cached(event_id, _daily_cache_key())
 
+
+@lru_cache(maxsize=256)
+def _get_event_end_ts_cached(event_id: str, cache_key: str) -> Optional[int]:
+    event = run_query(
+        "SELECT end_date FROM events WHERE id = ?", (event_id,))
+    if event.empty or not event['end_date'].iloc[0]:
+        return None
+    try:
+        return int(pd.to_datetime(event['end_date'].iloc[0],
+                                  format='mixed', utc=True).timestamp())
+    except (ValueError, TypeError):
+        return None
+
+
+def get_event_end_ts(event_id: str) -> Optional[int]:
+    """获取事件结束时间戳（秒，UTC）—— 倒计时用（带缓存）"""
+    return _get_event_end_ts_cached(event_id, _daily_cache_key())
+
 def get_window_start_timestamp(event_id: str, window_start: str) -> Optional[int]:
     """
     根据 window_start 类型，返回 expanding 窗口的起点时间戳（秒）
@@ -548,5 +566,6 @@ def clear_caches():
     _get_market_median_cached.cache_clear()
     _get_event_gamestart_label_cached.cache_clear()
     _get_event_start_ts_cached.cache_clear()
+    _get_event_end_ts_cached.cache_clear()
     _get_top_markets_by_price_cached.cache_clear()
     _is_event_active_cached.cache_clear()

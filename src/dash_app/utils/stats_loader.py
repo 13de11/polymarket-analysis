@@ -378,13 +378,20 @@ def get_histogram_data(series: str = '7d') -> pd.DataFrame:
     return df
 
 
-def get_event_timeline_events(series: str = '7d') -> pd.DataFrame:
-    """获取所有事件的时间线数据（支持系列过滤）"""
+def get_event_timeline_events(series: str = '7d', include_active: bool = False) -> pd.DataFrame:
+    """获取事件时间线数据（支持系列过滤）
+
+    include_active=True 时把「进行中（end_date 还没到）」的事件也带出来，
+    推文探索器需要它 —— 否则正在跑的事件在事件下拉里根本选不到。
+    """
     from src.dash_app.utils.data_loader import get_elon_tweet_events
-    df = get_elon_tweet_events(series)
+    df = get_elon_tweet_events(series, include_active=include_active)
     if df.empty:
         return df
-    return df[['id', 'slug', 'start_date', 'end_date']]
+    cols = ['id', 'slug', 'start_date', 'end_date']
+    if 'is_active' in df.columns:
+        cols.append('is_active')
+    return df[cols]
 
 
 def get_hourly_distribution() -> pd.DataFrame:
@@ -616,3 +623,8 @@ def get_event_time_range(event_id: str) -> tuple:
     end_dt = datetime.datetime(year, end_month, end_day, 16, 0, 0)
 
     return (start_dt.isoformat(), end_dt.isoformat())
+
+
+def clear_stats_caches():
+    """清空本模块的缓存（有新数据时由自动刷新调用）"""
+    _get_overview_stats_cached.cache_clear()

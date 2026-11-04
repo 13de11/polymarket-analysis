@@ -15,9 +15,15 @@ from src.dash_app.pages import insights as insights_dashboard
 from src.dash_app.pages import research
 from src.dash_app.pages.backtest.layout import layout as backtest_layout
 from src.dash_app.pages.backtest import callbacks as _backtest_callbacks  # noqa: F401
+from src.dash_app.utils import auto_refresh as _auto_refresh  # noqa: F401  注册自动刷新回调
 
 app.layout = html.Div([
     dcc.Location(id='url', refresh=True),
+    # 自动刷新定时器：只在 /analysis、/insights 由回调打开，其余页面 disabled
+    dcc.Interval(id='auto-refresh-tick', interval=10 * 60 * 1000,
+                 n_intervals=0, disabled=True),
+    # 数据版本号（推文/价格最新小时），变了才触发各图重算
+    dcc.Store(id='data-version', data=None),
     dcc.Store(id='global-params', data={}, storage_type='session'),
     html.Div([
 

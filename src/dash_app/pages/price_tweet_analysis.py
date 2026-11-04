@@ -6,6 +6,7 @@ import plotly.graph_objects as go
 import plotly.express as px
 from plotly.subplots import make_subplots
 import pandas as pd
+import time
 from datetime import datetime
 
 from src.dash_app.utils.stats_loader import HIT_THRESHOLD
@@ -17,6 +18,7 @@ from src.dash_app.utils.data_loader import (
     get_tweet_data,
     get_target_markets_batch,
     get_top_markets_by_price,
+    get_event_end_ts,
     is_event_active,
 )
 
@@ -130,6 +132,9 @@ def layout():
             ]),
         ], style={'marginBottom': 15}),
 
+        # ========== 倒计时（仅进行中事件出现；秒级跳动由前端 assets/countdown.js 负责） ==========
+        html.Div(id='event-countdown-bar', style={'marginBottom': 12}),
+
         # ========== 图表 ==========
         dcc.Loading(
             id='loading-chart',
@@ -205,8 +210,9 @@ def layout():
     Output('event-selector', 'value'),
     Input('series-selector', 'value'),
     Input('url', 'pathname'),
+    Input('data-version', 'data'),
 )
-def update_events(series, pathname):
+def update_events(series, pathname, _version):
     if pathname != '/analysis':
         return no_update, no_update
 
@@ -238,6 +244,51 @@ def update_events(series, pathname):
 
     default_event = events_df.iloc[-1]['id'] if not events_df.empty else None
     return event_options, default_event
+
+
+# ========== 回调：事件倒计时（只在进行中事件出现） ==========
+
+@callback(
+    Output('event-countdown-bar', 'children'),
+    Input('event-selector', 'value'),
+    Input('url', 'pathname'),
+    Input('data-version', 'data'),
+)
+def render_event_countdown(event_id, pathname, _version):
+    """进行中事件显示距离 end_date 的倒计时
+
+    秒级跳动不在这里做：服务端每秒回调会烧掉 PA 免费额度（100 CPU 秒/天），
+    实际跳秒由前端 assets/countdown.js 读 data-end-ts 属性完成，服务端零开销。
+    """
+    if pathname != '/analysis' or not event_id:
+        return no_update
+
+    end_ts = get_event_end_ts(event_id)
+    if not end_ts:
+        return no_update
+
+    now = int(time.time())
+    if end_ts <= now:
+        return no_update  # 已结束的事件不显示倒计时
+
+    days_left = (end_ts - now) / 86400
+    return html.Div([
+        html.Span("⏳ ", style={'fontSize': '16px'}),
+        html.Span("距离事件结束 ", style={'fontWeight': 'bold'}),
+        html.Span("--", id='analysis-countdown',
+                  **{'data-end-ts': str(end_ts)},
+                  style={'fontFamily': 'Menlo, Consolas, monospace',
+                         'fontWeight': 'bold', 'color': '#e8590c',
+                         'fontSize': '15px'}),
+        html.Span(f"　（约 {days_left:.1f} 天）", style={'color': '#868e96'}),
+    ], style={
+        'padding': '8px 12px',
+        'backgroundColor': '#fff4e6',
+        'border': '1px solid #ffd8a8',
+        'borderRadius': '6px',
+        'fontSize': '13px',
+        'color': '#495057',
+    })
 
 
 # ==================== 回调2：更新市场列表 ====================
@@ -320,8 +371,9 @@ def update_markets(event_id, pathname):
     Input('price-type-selector', 'value'),
     State('target-market-store', 'data'),
     Input('url', 'pathname'),
+    Input('data-version', 'data'),
 )
-def update_chart(event_id, selected_market_ids, price_type, target_info, pathname):
+def update_chart(event_id, selected_market_ids, price_type, target_info, pathname, _version):
     if pathname != '/analysis':
         return no_update, no_update
 
