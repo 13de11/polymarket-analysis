@@ -19,6 +19,7 @@ from src.dash_app.utils.stats_loader import (
     get_histogram_data,
     get_hourly_distribution,
     get_survival_by_range,
+    get_latest_data_hour,
 )
 
 
@@ -165,16 +166,47 @@ def update_insights_overview(series, window_days, pathname):
 
 # ========== 回调 2：推文相关（时间线 + 热力图 + 24h 分布） ==========
 
+# 「最新数据」高亮用色：琥珀色框（热力图）/ 红色描边（柱状图），与蓝/红色阶区分明显
+_HIGHLIGHT_BOX = '#1c7ed6'
+
+
+def _freshness_bar(latest: dict):
+    """渲染「数据截至」提示条。高亮口径 = 最新数据所在小时，不是墙钟此刻。"""
+    if not latest:
+        return html.Div("⏱ 暂无推文数据", style={'fontSize': '12px',
+                                                  'color': '#6c757d'})
+
+    lag = latest['lag_hours']
+    # 每小时采集，正常延迟 1~2 小时；超过 3 小时就该怀疑采集断了
+    lag_color = '#6c757d' if lag < 3 else '#e8590c'
+    lag_warn = '' if lag < 3 else '（>3 小时，建议检查采集是否中断）'
+
+    return html.Div([
+        html.Span("⏱ ", style={'fontSize': '13px'}),
+        html.Strong("最新数据："),
+        html.Span(f"{latest['label']}（周{latest['dow_cn']} {latest['hour']:02d} 时）"),
+        html.Span(f"　距今 {lag:.1f} 小时{lag_warn}",
+                  style={'color': lag_color, 'fontWeight': 'bold'}),
+        html.Span("　· 图中高亮 = 最新数据所在的小时（每采集一次自动跟随）",
+                  style={'color': '#868e96', 'marginLeft': '8px'}),
+    ], style={'fontSize': '12px', 'padding': '6px 10px',
+              'backgroundColor': '#f8f9fa', 'borderRadius': '4px',
+              'border': '1px solid #e9ecef'})
+
+
 @callback(
     Output('insights-tweet-timeline', 'figure'),
     Output('insights-tweet-heatmap', 'figure'),
     Output('insights-hourly-distribution', 'figure'),
+    Output('insights-data-freshness', 'children'),
     Input('insights-time-range', 'value'),
     Input('url', 'pathname'),
 )
 def update_insights_tweets(time_range, pathname):
     if pathname != '/insights':
-        return no_update, no_update, no_update
+        return no_update, no_update, no_update, no_update
+
+    latest = get_latest_data_hour()
 
     tweet_df = get_tweet_timeline(30 if time_range == 'all' else time_range)
 
@@ -194,18 +226,60 @@ def update_insights_tweets(time_range, pathname):
 
     if not heatmap_df.empty:
         heatmap_pivot = heatmap_df.pivot_table(index='dow_label', columns='hour', values='avg_tweets', fill_value=0)
+
+        # 坐标一律转数值：x = 小时(0~23)，y = 行序号(0~6)。
+        # 热力图原本用字符串做类别轴，类别轴上没法画精确对齐的矩形框，
+        # 转成数值后格子边界恒为 ±0.5，高亮框可以像素级贴合。
+        col_keys = sorted(heatmap_pivot.columns.tolist(), key=lambda c: int(c))
+        heatmap_pivot = heatmap_pivot[col_keys]
+        x_vals = [int(c) for c in col_keys]
+        y_vals = list(range(len(heatmap_pivot.index)))
+        # 悬停时 %{y} 是数字，改用 customdata 显示星期名
+        dow_matrix = [[d] * len(x_vals) for d in heatmap_pivot.index]
+
         heatmap2_fig = go.Figure(data=go.Heatmap(
-            z=heatmap_pivot.values, x=heatmap_pivot.columns, y=heatmap_pivot.index, colorscale='Reds',
-            hovertemplate='星期: %{y}<br>小时: %{x}<br>平均推文: %{z:.1f}<extra></extra>'
+            z=heatmap_pivot.values, x=x_vals, y=y_vals, colorscale='Reds',
+            customdata=dow_matrix,
+            hovertemplate='星期: %{customdata}<br>小时: %{x}<br>平均推文: %{z:.1f}<extra></extra>'
         ))
-        heatmap2_fig.update_layout(xaxis={'title': '小时 (UTC)', 'tickmode': 'array', 'tickvals': list(range(0, 24, 3))},
-                                   yaxis={'title': '星期'}, margin={'l': 80, 'r': 20, 't': 20, 'b': 40})
+        heatmap2_fig.update_layout(
+            xaxis={'title': '小时 (UTC)', 'tickmode': 'array', 'tickvals': list(range(0, 24, 3))},
+            yaxis={'title': '星期', 'tickmode': 'array', 'tickvals': y_vals,
+                   'ticktext': list(heatmap_pivot.index)},
+            margin={'l': 80, 'r': 20, 't': 20, 'b': 40},
+        )
+
+        # ⏱ 最新数据所在格：矩形描边（数值坐标，边界 ±0.5 正好贴合一个格子）
+        if latest:
+            dow_list = heatmap_pivot.index.tolist()
+            if latest['dow'] in dow_list and latest['hour'] in x_vals:
+                yi = dow_list.index(latest['dow'])
+                h = latest['hour']
+                heatmap2_fig.add_shape(
+                    type='rect', layer='above',
+                    x0=h - 0.5, x1=h + 0.5, y0=yi - 0.5, y1=yi + 0.5,
+                    line=dict(color=_HIGHLIGHT_BOX, width=3),
+                    fillcolor='rgba(0,0,0,0)',
+                )
     else:
         heatmap2_fig = go.Figure().add_annotation(text="暂无数据", showarrow=False)
 
     hourly_df = get_hourly_distribution()
 
     if not hourly_df.empty:
+        n = len(hourly_df)
+        line_colors = ['rgba(0,0,0,0)'] * n
+        line_widths = [0] * n
+        opacities = [0.8] * n
+        hl_pos = None
+        if latest:
+            matched = hourly_df.index[hourly_df['hour'] == latest['hour']]
+            if len(matched):
+                hl_pos = hourly_df.index.get_loc(matched[0])
+                line_colors[hl_pos] = '#d62728'
+                line_widths[hl_pos] = 2.5
+                opacities[hl_pos] = 1.0
+
         hour_fig = go.Figure(go.Bar(
             x=hourly_df['hour'],
             y=hourly_df['avg_tweets'],
@@ -213,11 +287,13 @@ def update_insights_tweets(time_range, pathname):
                 color=hourly_df['avg_tweets'],
                 colorscale='Blues',
                 showscale=False,
+                line=dict(color=line_colors, width=line_widths),
+                opacity=opacities,
             ),
             hovertemplate='小时: %{x}<br>平均推文: %{y:.1f}<extra></extra>',
         ))
         hour_fig.update_layout(
-            title='24小时平均推文数',
+            title=f"24小时平均推文数（最新数据 {latest['hour']:02d} 时标红框）" if hl_pos is not None else '24小时平均推文数',
             xaxis=dict(title='UTC 小时', tickmode='linear', dtick=2),
             yaxis=dict(title='平均推文数'),
             showlegend=False,
@@ -226,7 +302,7 @@ def update_insights_tweets(time_range, pathname):
     else:
         hour_fig = go.Figure().add_annotation(text="暂无数据", showarrow=False)
 
-    return tweet_fig, heatmap2_fig, hour_fig
+    return tweet_fig, heatmap2_fig, hour_fig, _freshness_bar(latest)
 
 
 # ========== 回调 3：命中分布 + 相关性 + 存活时长 ==========

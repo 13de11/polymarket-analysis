@@ -16,7 +16,13 @@ from src.dash_app.utils.stats_loader import (
     get_event_timeline_events,
     get_tweet_matrix,
     get_event_time_range,
+    get_latest_data_hour,
 )
+
+
+# 「最新数据」所在的单元格底色（表格本身是暖色系，用冷色标出来最清楚）
+_HL_CELL = '#a5d8ff'
+_HL_HEADER = '#bcd7ef'
 
 
 # ========== 纯计算辅助（IN-7 拆出） ==========
@@ -265,7 +271,7 @@ def render_explorer_section():
         html.Div(id='tweet-explorer-table', style={'overflowX': 'auto', 'marginTop': '10px'}),
         html.Div([
             html.Strong("📖 如何阅读："),
-            html.Span("表格横轴为日期，纵轴为 UTC 小时，单元格颜色深浅表示该时段推文数。Total 行 = 该日期活跃时段推文总数（末格为日均总量）；Avg 列 = 该小时仅统计活跃期的平均推文数；顶部「活跃期平均/小时」卡 = 活跃期平均每小时推文数，与表格同口径。仅活跃期（事件时间范围内）的数据会着色统计，其余显示为灰色。",
+            html.Span("表格横轴为日期，纵轴为 UTC 小时，单元格颜色深浅表示该时段推文数。Total 行 = 该日期活跃时段推文总数（末格为日均总量）；Avg 列 = 该小时仅统计活跃期的平均推文数；顶部「活跃期平均/小时」卡 = 活跃期平均每小时推文数，与表格同口径。仅活跃期（事件时间范围内）的数据会着色统计，其余显示为灰色。浅蓝色格 = 最新采集到的那一小时（随数据更新自动移动，若当前筛选范围不含该小时则不显示）。",
                       style={'color': '#495057', 'fontSize': '12px'}),
             html.Br(),
             html.Strong("💡 统计意义："),
@@ -365,6 +371,13 @@ def update_tweet_explorer(mode, event_id, start_date, end_date, pathname):
     days_count = stats['days_count']
     trend = stats['trend']
 
+    # ---- 最新数据位置（表格高亮用） ----
+    # 口径：tweet_hourly 的 MAX 时间戳转 UTC，而不是 datetime.now()。
+    # 数据没到时高亮不动，数据一到自动跟到新格，不需要整点对齐。
+    latest = get_latest_data_hour()
+    cur_date = latest.get('date')
+    cur_hour = latest.get('hour')
+
     # ---- 渲染：统计卡片 ----
     stats_cards = html.Div([
         html.Div([
@@ -413,11 +426,17 @@ def update_tweet_explorer(mode, event_id, start_date, end_date, pathname):
     for i, hour_val in enumerate(hours):
         row = [f"{hour_val:02d}:00"]
         for j in range(len(dates)):
+            # 是否「最新数据」那一格（日期 + 小时都对上）
+            is_now = (cur_date is not None
+                      and dates[j] == cur_date
+                      and int(hour_val) == int(cur_hour))
             if active.iloc[i, j]:
                 val = int(pivot.iloc[i, j])
-                row.append({'value': val, 'color': get_color(val)})
+                row.append({'value': val,
+                            'color': _HL_CELL if is_now else get_color(val)})
             else:
-                row.append({'value': '', 'color': '#e8e8e8'})
+                row.append({'value': '',
+                            'color': _HL_CELL if is_now else '#e8e8e8'})
         row.append({'value': round(row_avg.iloc[i], 1), 'color': '#eaf2f8'})
         cell_vals.append(row)
 
@@ -449,10 +468,15 @@ def update_tweet_explorer(mode, event_id, start_date, end_date, pathname):
     n_rows = len(hours) + 1 + 1
     fig_height = max(400, n_rows * row_height + 60)
 
+    # 表头：最新数据所在的日期列单独染色（第 0 列是"小时"，所以 +1）
+    header_fill = ['#f1f3f5'] * len(header_vals)
+    if cur_date and cur_date in dates:
+        header_fill[1 + dates.index(cur_date)] = _HL_HEADER
+
     fig = go.Figure(data=[go.Table(
         header=dict(
             values=header_vals,
-            fill_color='#f1f3f5',
+            fill_color=header_fill,
             align='center',
             font=dict(size=12, color='#2c3e50')
         ),

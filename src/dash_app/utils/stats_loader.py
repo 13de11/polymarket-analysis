@@ -5,7 +5,7 @@
 
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta, date, timezone
 from functools import lru_cache
 
 from .data_loader import run_query
@@ -402,6 +402,46 @@ def get_hourly_distribution() -> pd.DataFrame:
         return pd.DataFrame()
     df['hour'] = df['hour'].astype(int)
     return df
+
+
+def get_latest_data_hour() -> dict:
+    """最新推文数据所属的（UTC）日期 / 小时 / 星期 —— 「最新数据」高亮用
+
+    为什么不用 datetime.now()：推文是每小时延后采集的，墙钟此刻那一格
+    往往还没数据。取 tweet_hourly 的 MAX(timestamp_unix_utc)，高亮就永远
+    落在有数据的位置，数据一到自动跟着走 —— 不需要整点对齐，也不怕采集延迟。
+
+    必须用 UTC 解析：热力图/矩阵的 dow、hour 都是 SQLite 用 unixepoch 按 UTC
+    算出来的，若按本地时区（UTC+8）解析会整体偏 8 格。
+
+    Returns:
+        {} 表示库里没有推文数据；否则：
+        {'ts', 'date': 'YYYY-MM-DD', 'hour': int, 'dow': 'Mon'..'Sun',
+         'dow_cn': '一'..'日', 'lag_hours': float, 'label': '11-04 03:00 UTC'}
+    """
+    df = run_query("SELECT MAX(timestamp_unix_utc) AS ts FROM tweet_hourly")
+    if df.empty or pd.isna(df['ts'].iloc[0]):
+        return {}
+
+    ts = int(df['ts'].iloc[0])
+    dt = datetime.fromtimestamp(ts, timezone.utc)
+    lag_hours = (datetime.now(timezone.utc).timestamp() - ts) / 3600
+
+    # 固定表查表，不用 strftime('%a')：后者受系统 locale 影响（中文系统会返回"周三"）
+    dow_names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+    dow_cn = {'Mon': '一', 'Tue': '二', 'Wed': '三', 'Thu': '四',
+              'Fri': '五', 'Sat': '六', 'Sun': '日'}
+    dow = dow_names[dt.weekday()]
+
+    return {
+        'ts': ts,
+        'date': dt.strftime('%Y-%m-%d'),
+        'hour': dt.hour,
+        'dow': dow,
+        'dow_cn': dow_cn[dow],
+        'lag_hours': round(lag_hours, 1),
+        'label': dt.strftime('%m-%d %H:00') + ' UTC',
+    }
 
 
 def get_survival_by_range() -> pd.DataFrame:

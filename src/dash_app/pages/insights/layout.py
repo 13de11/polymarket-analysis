@@ -102,6 +102,9 @@ def layout():
                         ),
                     ], style={'marginBottom': 15}),
 
+                    # 数据新鲜度提示（最新数据小时 / 距今多久），由回调填充
+                    html.Div(id='insights-data-freshness', style={'marginBottom': '10px'}),
+
                     html.Div([
                         dcc.Graph(id='insights-tweet-timeline', style={'height': '350px'}),
                         info_block(
