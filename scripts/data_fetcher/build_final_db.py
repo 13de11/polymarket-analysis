@@ -289,6 +289,20 @@ for p in price_data:
 
 print(f"   ✅ 写入 {inserted} 条价格记录")
 
+# 防呆：价格数据太旧时警告（上传前必须先 sync_prices + aggregate，否则
+# 会用旧库覆盖线上自动采集的新数据）
+_max_hour = tgt_conn.execute("SELECT MAX(hour_start_utc) FROM price_hourly").fetchone()[0]
+if _max_hour:
+    from datetime import datetime, timezone
+    _age_h = (datetime.now(timezone.utc).timestamp() - _max_hour) / 3600
+    _latest = datetime.fromtimestamp(_max_hour, tz=timezone.utc).strftime('%Y-%m-%d %H:%M UTC')
+    if _age_h > 48:
+        print(f"   ⚠️ 警告：价格数据最新只到 {_latest}（距今 {_age_h/24:.1f} 天）。"
+              f"上传到线上前请先跑 sync_prices + aggregate_prices_tweets，"
+              f"否则会覆盖掉线上自动采集的新数据！")
+    else:
+        print(f"   ✅ 价格数据最新: {_latest}（距今 {_age_h:.0f} 小时）")
+
 # 创建索引
 tgt_conn.execute("CREATE INDEX idx_price_market ON price_hourly(market_id)")
 tgt_conn.execute("CREATE INDEX idx_price_hour ON price_hourly(hour_start_utc)")

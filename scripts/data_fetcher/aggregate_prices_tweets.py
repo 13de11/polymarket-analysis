@@ -63,14 +63,20 @@ def parse_event_period_from_question(question: str):
     return int(start_dt.timestamp()), int(end_dt.timestamp())
 
 
-def get_events(conn, event_slug=None, event_ids=None):
-    """获取需要处理的事件列表（近 35 天结束或尚未结束的事件，含活跃事件）"""
+def get_events(conn, event_slug=None, event_ids=None, all_history=False):
+    """获取需要处理的事件列表
+
+    默认：近 35 天结束或尚未结束的事件（增量模式的合理范围）
+    all_history=True：全部历史事件（--force 全量重建时必须用它，
+        否则会先删表再只重建近 35 天，导致历史价格被清空——曾发生过一次）
+    """
     query = """
         SELECT id, slug
         FROM events
         WHERE series_slug IN ('elon-tweets', 'elon-tweets-48h')
-          AND (end_date IS NULL OR end_date >= datetime('now', '-35 days'))
     """
+    if not all_history:
+        query += " AND (end_date IS NULL OR end_date >= datetime('now', '-35 days'))"
     params = []
 
     if event_slug:
@@ -113,7 +119,7 @@ def main():
     # ---------- 创建输出表 ----------
     if args.force:
         cursor.execute(f"DROP TABLE IF EXISTS {TABLE_NAME}")
-        print(f"🗑️ 已强制删除旧表 {TABLE_NAME}")
+        print(f"🗑️ 已强制删除旧表 {TABLE_NAME}（将重建全部历史事件）")
 
     cursor.execute(f'''
         CREATE TABLE IF NOT EXISTS {TABLE_NAME} (
@@ -141,7 +147,8 @@ def main():
     if args.event_ids:
         event_ids = [e.strip() for e in args.event_ids.split(',') if e.strip()]
 
-    events_df = get_events(conn, event_slug=args.event_slug, event_ids=event_ids)
+    events_df = get_events(conn, event_slug=args.event_slug, event_ids=event_ids,
+                           all_history=args.force)
 
     if events_df.empty:
         print("❌ 没有符合条件的事件")
