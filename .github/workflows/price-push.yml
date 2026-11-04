@@ -8,7 +8,11 @@ name: price-push
 # 聚合小时线后 POST 回 PA 的 /collect/prices-data 端点写库。
 on:
   schedule:
-    - cron: '23 * * * *'   # 每小时第 23 分钟（UTC），与推文任务（:07）错开
+    # GitHub 的 schedule 是"尽力而为"：负载高/仓库活跃度低时会被延迟甚至跳过。
+    # 所以每小时设两个时间点互相兜底；重复运行无害（写入是幂等 REPLACE，
+    # 且采集器带缺口感知，会自动补齐上次运行以来缺的小时）。
+    - cron: '23 * * * *'
+    - cron: '53 * * * *'
   workflow_dispatch: {}    # 支持手动触发（测试用）
 
 jobs:

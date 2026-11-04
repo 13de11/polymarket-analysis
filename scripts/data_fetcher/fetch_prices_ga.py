@@ -89,19 +89,26 @@ def main():
 
     # ---- 2. 逐市场拉价 + 聚合 ----
     now = int(time.time())
-    start_ts = now - lookback * 3600
     deadline = time.time() + args.deadline
     rows, fetch_errors, no_data, timed_out = [], 0, 0, False
+    max_gap_hours = 0.0
 
     for i, t in enumerate(tokens, 1):
         if time.time() > deadline:
             timed_out = True
             print(f"⏱ 已到 {args.deadline}s 熔断时限，剩余市场下轮补齐")
             break
+        # 缺口感知：从该市场最后一条价格之后开始回看（GitHub 定时可能被延迟数小时），
+        # 至少回看 lookback 小时（重推边界小时），最多 1 天（CLOB 单窗口上限）
+        last_hour = t.get("last_hour")
+        gap = now - int(last_hour) if last_hour else lookback * 3600
+        gap = max(gap, lookback * 3600)
+        gap = min(gap, 24 * 3600)
+        max_gap_hours = max(max_gap_hours, gap / 3600)
         try:
             resp = s.get(f"{CLOB_BASE}/prices-history", params={
                 "market": t["token_id"], "fidelity": 1,
-                "startTs": start_ts, "endTs": now,
+                "startTs": now - gap, "endTs": now,
             }, timeout=30)
             history = resp.json().get("history", []) or []
         except Exception:
@@ -117,7 +124,7 @@ def main():
 
     print(f"📊 采集完成: {len(rows)} 行（{len(tokens)} 市场中 "
           f"无成交 {no_data}、失败 {fetch_errors}"
-          f"{'、熔断截断' if timed_out else ''}）")
+          f"{'、熔断截断' if timed_out else ''}；最大回看 {max_gap_hours:.0f} 小时）")
 
     # ---- 3. 推送回 PA ----
     if not rows:

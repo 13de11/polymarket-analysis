@@ -10,6 +10,9 @@
 
 ```
 Polymarket_Analysis/
+├── .github/workflows/            # GitHub Actions（线上数据每小时自动推送）
+│   ├── musk-tweet-push.yml       #   推文：muskmeter → PA（每小时 :07 UTC）
+│   └── price-push.yml            #   价格：Polymarket → PA（每小时 :23 UTC）
 ├── app_new.py                    # Dash 应用入口
 ├── config.py                     # 路径配置
 ├── requirements.txt
@@ -29,6 +32,7 @@ Polymarket_Analysis/
 │       ├── sync_prices.py
 │       ├── import_tweets.py
 │       ├── fetch_muskmeter.py   # muskmeter 推文爬虫（小时计数，替代手抄 Excel）
+│       ├── fetch_prices_ga.py   # GA 价格采集推送脚本（直连 CLOB → 聚合 → POST 回 PA）
 │       ├── aggregate_prices_tweets.py  # 小时级聚合
 │       ├── build_final_db.py     # 从原始库生成精简库
 │       ├── check_db.py           # 数据库健康检查
@@ -122,7 +126,81 @@ python app_new.py
 
 ---
 
+## 🤖 线上自动采集（2026-10-29 上线）
+
+线上数据**每小时自动更新**，不再依赖手动上传精简库。本地流程仅用于大库维护和同步新事件。
+
+### 架构
+
+```
+GitHub Actions（每小时，两个错开的任务）：
+  musk-tweet-push（:07 UTC）
+    muskmeter.live 抓推文小时计数（WARP 代理过 Vercel 检查）
+    → 解析 → POST /collect/tweets → PA 写 tweet_hourly
+  price-push（:23 UTC）
+    GET /collect/tokens 拿活跃市场 token
+    → 直连 Polymarket CLOB 拉最近 2 小时 1 分钟价
+    → 聚合小时线 → POST /collect/prices-data → PA 写 price_hourly
+
+PA 端点（秘钥鉴权，均支持 upsert，重复推送幂等）：
+  GET  /collect/tokens        活跃市场 token 映射（只读）
+  POST /collect/prices-data   接收价格行
+  POST /collect/tweets        接收推文小时行
+  GET  /collect/prices        PA 就地采集价格（手动/备用，走 PA 代理）
+  GET  /collect/debug         Web 进程环境变量诊断
+```
+
+### 部署配置（一次性）
+
+1. **WSGI 文件**（`/var/www/13de11_pythonanywhere_com_wsgi.py`，两行 env 都必须在
+   `from app_new import ...` 之前）：
+   ```python
+   os.environ['COLLECT_KEY'] = '你的秘钥'
+   os.environ['COLLECT_PROXY'] = 'http://proxy.server:3128'   # PA 免费版 Web 进程出网必须走内部代理
+   ```
+2. **GitHub 仓库** → Settings → Secrets → Actions → 添加 `COLLECT_KEY`（同一个秘钥）
+3. `.github/workflows/` 两个 workflow 随仓库携带，push 后在 Actions 页启用
+
+### 运维备忘
+
+- **手动触发**：浏览器访问 `/collect/prices?key=秘钥`（加 `&limit_markets=5` 小样测试、
+  `&backfill_hours=23` 补缺口——CLOB 单窗口 1 天上限）；`/collect/debug?key=秘钥` 看环境变量
+- **GitHub 定时不可靠**：Actions 的 `schedule` 是"尽力而为"，实测可被延迟数小时甚至跳过
+  （平台负载 / 仓库活跃度低）。对策已内置：①每个 workflow 每小时设两个 cron 时间点兜底
+  ②推文每次全窗口 REPLACE 重推（≤8 天），天然自愈 ③价格采集器"缺口感知"——从各市场
+  最后一条价格之后回看（最多 24 小时），不会因延迟产生断档
+- **GitHub 60 天规则**：仓库 60 天无任何活动，定时 workflow 会被自动停用（有邮件提醒），
+  到 Actions 页重新 enable 即可
+- **新事件发现**：每周新事件上线后价格采集会提示"需本地周更同步"——跑一次本地
+  `sync_events/sync_markets + build_final_db + 上传精简库` 即恢复
+- **熔断保护**：`/collect/prices` 有 240 秒总熔断 + 逐市场提交，被掐不丢数据，
+  返回里 `timed_out: true` 表示部分市场延到下一轮（每小时自动补齐）
+- **采集排序**：市场按最近已知价格降序（"在打"的热门市场优先）
+
+### 踩坑记录（架构为什么长这样）
+
+- **muskmeter 在 Vercel 安全检查后面**：按 IP 段拦截数据中心流量——GA runner、无头浏览器
+  （patchright + 指纹隐藏也不行）、公共中转服务全部实测被拦。解法：GA 上装 Cloudflare WARP
+  代理模式（消费级 IP 信誉）通过；备用降级链：r.jina.ai 渲染中转 → patchright 浏览器
+- **PA 免费版 Web 进程出网必须走内部代理**（Bash console 自动配了，Web 进程没有），
+  不配置时连不上 Polymarket，表现为端点长时间无响应被掐
+- **muskmeter 不同事件页对同一小时计数可能不一致**：只信事件自身窗口的数据，
+  不采事件页的"上下文列"；爬虫默认抓滚动 7 天窗口（不带 eventId）
+- **页面时区为美东**：爬虫用 America/New_York 换算（自动夏令时）。
+  2026-11-01 美国冬令时后变 UTC-5，首次跨冬令时需人工核对一次
+- **sqlite3 把 numpy.int64 绑定成 BLOB**（条件永假、静默 0 行）：`run_query` 已统一
+  coerce numpy 标量，新代码传参注意
+- **`--force` 类"重建"必须显式全量**（2026-11-04 事故）：`aggregate_prices_tweets.py --force`
+  原先会删表却只重建近 35 天事件，导致 6~9 月中旬的历史价格被清空（修复：force 时
+  `all_history=True` 重建全部历史）。**教训**：任何"先删后建"的操作，覆盖范围必须写死且可见；
+  上传精简库前必须核对数据时效（`build_final_db` 已加 >48 小时警告）
+
+---
+
 ## 📊 数据处理流程
+
+> ⚠️ 线上精简库已由「🤖 线上自动采集」每小时维护，以下本地流程仅用于
+> **原始大库维护**和**新事件结构同步**（每周一次即可，见上方新事件发现备忘）。
 
 ```
 1. 事件增量（series_id 驱动，自动刷新状态）
@@ -382,6 +460,17 @@ line=dict(color=COLOR_PRIMARY)
 
 **口径备注**：muskmeter 不同事件页对同一小时计数可能不一致（当前事件页的上下文列对事件开始日之前的天会丢数据）——爬虫只采事件自身窗口；11-01 美国冬令时后（ET 变 UTC-5）首次运行需人工核对一次时区。
 
+### 2026-10-29 批次 ✅ 线上自动化部署 + 推文链路攻坚 + 48h 推文图 bug 修复
+
+| 编号 | 内容 |
+|------|------|
+| T8 续 | muskmeter 抓取穿透 Vercel 安全检查四轮攻坚（requests → playwright → patchright → **WARP 代理模式成功**），降级链定型：WARP 直连 → jina 渲染中转 → patchright 浏览器兜底 |
+| A1 | 线上自动采集上线（架构见 🤖 章节）：GA 双 workflow + PA 五个 /collect 端点 + market_tokens 随库携带 |
+| A2 | 缓存 key 按天 → 按小时（data_loader/prepare/stats_loader），配合每小时采集 |
+| F9 | 48h 事件推文图不显示修复：sqlite3 将 numpy.int64 绑定成 BLOB（条件永假静默 0 行），run_query 统一 coerce numpy 标量 |
+| F10 | game_start_time 缺失回填：同步早于比赛窗口开始时 API 返回 null 且不回填（影响全部活跃事件），build_final_db 增加 slug 起始日 16:00 UTC 推导兜底（5/5 已知值验证一致），sync_markets upsert 改 COALESCE 防 null 覆盖 |
+| A3 | 采集健壮性：/collect/prices 240 秒总熔断 + 逐市场提交（PA 单 worker 防僵尸任务拖死）+ 市场按价格活跃度排序（在打市场优先）+ no_data/fetch_errors 计数分离 + /collect/debug 诊断端点 |
+
 ### 保留项（旧 P2/P3 未重新编号）
 
 | 旧编号 | 问题 |
@@ -416,16 +505,19 @@ line=dict(color=COLOR_PRIMARY)
 
 - `data/*.db` 不入 git
 - `archives/` 不参与 Web
-- 部署用精简库 `elon_tweets_analysis.db`（约 24 MB）
-- `_test_*.py` / `_find_*.py` / `_diag*.py` 为本地调试脚本，不入 git
+- 部署用精简库 `elon_tweets_analysis.db`（约 27 MB，线上由自动采集维护）
+- `_test_*.py` / `_find_*.py` / `_diag*.py` / `_diag_*.html` 为本地调试文件，不入 git
 
 ---
+
+## 📌 版本状态
 
 ## 📌 版本状态
 
 - **稳定可用**：观察层（`/`、`/analysis`、`/insights`）、回测模块、策略研究三 Tab、跨页带参闭环（C1 已修）
 - **审计整改**：**全部完成**——第一批（C1/F1/S4）、第二批（S1/F3/E3/E1/F4/F2，E1 暂缓）、第三批（S2/S3/S5/S6/E4/B3/F5/F6）✅（详见整改路线图）
 - **2026-10-28 批次**：✅ 总览窗口化改造（E5/E6）+ 命中结算价口径统一（F7）+ 数据完整性过滤（F8）+ muskmeter 爬虫（T8）
+- **2026-10-29 批次**：✅ 线上自动采集上线（推文/价格双 GitHub Actions 每小时推送）+ 48h 推文图 bug 修复（numpy BLOB 绑定 + game_start_time 回填）+ 缓存按小时失效
 
 ---
 

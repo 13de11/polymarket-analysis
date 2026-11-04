@@ -234,7 +234,11 @@ def register_collect_routes(server):
 
     @server.route("/collect/tokens")
     def _collect_tokens():
-        """下发活跃市场的 token 映射（给 GA 价格采集脚本用，只读）"""
+        """下发活跃市场的 token 映射 + 各市场最后有价格的钟点（给 GA 价格采集用，只读）
+
+        last_hour 用于"缺口感知"：GitHub Actions 定时任务可能被延迟数小时，
+        GA 端据此自动扩大回看范围，避免中间断档。
+        """
         if not _authorized():
             return jsonify({"ok": False, "error": "unauthorized"}), 404
         try:
@@ -245,14 +249,17 @@ def register_collect_routes(server):
                     return jsonify({"ok": True, "tokens": []})
                 placeholders = ",".join(["?"] * len(event_ids))
                 rows = conn.execute(f"""
-                    SELECT m.id, t.token_id
+                    SELECT m.id, t.token_id,
+                           (SELECT MAX(p.hour_start_utc) FROM price_hourly p
+                            WHERE p.market_id = m.id) AS last_hour
                     FROM markets m
                     JOIN market_tokens t ON t.market_id = m.id
                     WHERE m.event_id IN ({placeholders})
                     ORDER BY m.id
                 """, event_ids).fetchall()
                 return jsonify({"ok": True, "tokens": [
-                    {"market_id": r[0], "token_id": r[1]} for r in rows]})
+                    {"market_id": r[0], "token_id": r[1], "last_hour": r[2]}
+                    for r in rows]})
             finally:
                 conn.close()
         except Exception as e:
