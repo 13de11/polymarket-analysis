@@ -6,6 +6,7 @@ data/*.db-wal
 data/*.db-shm
 data/*.db.bak
 data/experiments/
+data/exports/pg_*/
 
 # ===== 大 Excel（数据导入中间产物，Web 运行不需要）=====
 data/tweet_counts_long.xlsx
